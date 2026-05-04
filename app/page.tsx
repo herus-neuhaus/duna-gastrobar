@@ -146,13 +146,12 @@ export default function DunaGastrobarReservation() {
   }
 
   return (
-    <div className="min-h-screen bg-[#EBE3D5] flex items-center justify-center p-4 md:py-12 font-sans text-[#4A3728]">
-      <div className="w-full max-w-[420px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden border border-[#D9CFC1] flex flex-col">
+    <div className="min-h-screen bg-[#EBE3D5] flex flex-col items-center justify-start py-6 px-4 font-sans text-[#4A3728] overflow-x-hidden">
+      <div className="w-full max-w-[420px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden border border-[#D9CFC1] flex flex-col shrink-0">
         
         {/* Header */}
-        <div className="bg-[#4A3728] text-white p-6 text-center">
-          <h1 className="text-2xl font-serif tracking-widest uppercase mb-1">Duna Cozinha & Bar</h1>
-          <p className="text-[10px] opacity-80 uppercase tracking-widest">Experiência Gastronômica no Litoral</p>
+        <div className="bg-[#4A3728] text-white p-5 pt-8 text-center">
+          <h1 className="text-xl sm:text-2xl font-serif tracking-[2px] sm:tracking-[4px] uppercase leading-tight">Duna Cozinha & Bar</h1>
         </div>
 
         {/* Accordion Container */}
@@ -422,7 +421,7 @@ export default function DunaGastrobarReservation() {
           </div>
         </a>
         
-        <p className="text-center text-[10px] opacity-40 uppercase tracking-[3px] mt-4 mb-8">
+        <p className="text-center text-[10px] opacity-40 uppercase tracking-[4px] mt-4 mb-8">
           Experiência Gastronômica • Porto Velho
         </p>
       </div>
