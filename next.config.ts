@@ -18,10 +18,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  devIndicators: {
-    appIsrStatus: false,
-    buildActivity: false,
-  },
   output: 'standalone',
   transpilePackages: ['motion'],
 };
