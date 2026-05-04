@@ -99,7 +99,7 @@ export default function AdminDashboard() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-serif font-bold tracking-wide">Duna Gastrobar</h1>
+          <h1 className="text-2xl lg:text-3xl font-serif font-bold tracking-wide">Duna Cozinha & Bar</h1>
           <p className="text-sm font-medium tracking-widest uppercase opacity-70 mt-1">Controle de Reservas</p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">

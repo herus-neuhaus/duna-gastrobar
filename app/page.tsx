@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState } from 'react';
-import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function DunaGastrobarReservation() {
@@ -151,7 +151,7 @@ export default function DunaGastrobarReservation() {
         
         {/* Header */}
         <div className="bg-[#4A3728] text-white p-6 text-center">
-          <h1 className="text-2xl font-serif tracking-widest uppercase mb-1">Duna Gastrobar</h1>
+          <h1 className="text-2xl font-serif tracking-widest uppercase mb-1">Duna Cozinha & Bar</h1>
           <p className="text-[10px] opacity-80 uppercase tracking-widest">Experiência Gastronômica no Litoral</p>
         </div>
 
@@ -268,7 +268,7 @@ export default function DunaGastrobarReservation() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Ex: Aniversário, cadeira de rodas, alguma alergia grave..."
-                  className="w-full px-4 py-3 bg-white border border-[#D9CFC1] rounded-xl text-xs focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none resize-none h-24 mb-4 placeholder:text-[#4A3728]/50 text-[#4A3728]"
+                  className="w-full px-4 py-3 bg-white border border-[#D9CFC1] rounded-xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none resize-none h-24 mb-4 placeholder:text-[#4A3728]/50 text-[#4A3728]"
                 ></textarea>
                 <button 
                   onClick={() => handleNext(4)}
@@ -289,7 +289,7 @@ export default function DunaGastrobarReservation() {
                   <div>
                     <input
                       type="text"
-                      className={`w-full px-4 py-3 bg-white border rounded-xl text-xs focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
+                      className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
                         formErrors.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
                       }`}
                       value={formData.name}
@@ -304,7 +304,7 @@ export default function DunaGastrobarReservation() {
                   <div>
                     <input
                       type="email"
-                      className={`w-full px-4 py-3 bg-white border rounded-xl text-xs focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
+                      className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
                         formErrors.email ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
                       }`}
                       value={formData.email}
@@ -319,7 +319,7 @@ export default function DunaGastrobarReservation() {
                   <div>
                     <input
                       type="tel"
-                      className={`w-full px-4 py-3 bg-white border rounded-xl text-xs focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
+                      className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
                         formErrors.whatsapp ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
                       }`}
                       value={formData.whatsapp}
@@ -366,11 +366,65 @@ export default function DunaGastrobarReservation() {
                 {!isSubmitting && <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>}
               </button>
               <p className="text-center text-[9px] mt-4 opacity-50 uppercase tracking-widest text-[#4A3728]">
-                Duna Gastrobar © 2024 • Política de Cancelamento
+                Duna Cozinha & Bar © 2024 • Política de Cancelamento
               </p>
             </div>
         )}
 
+      </div>
+
+      {/* Footer Info */}
+      <div className="mt-12 w-full max-w-[400px] flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
+        <a 
+          href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-start gap-4 p-5 bg-white/50 backdrop-blur-sm rounded-2xl border border-[#D9CFC1] hover:bg-white/80 transition-all group"
+        >
+          <div className="w-10 h-10 flex items-center justify-center bg-[#4A3728] text-white rounded-xl shadow-lg group-hover:scale-110 transition-transform">
+            <MapPin size={20} />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">Localização</p>
+            <p className="text-xs font-medium leading-relaxed">
+              Av. Pinheiro Machado, 1356 - São Cristóvão, Porto Velho - RO, 76820-838
+            </p>
+          </div>
+        </a>
+
+        <a 
+          href="https://wa.me/5569992564637" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-center gap-4 p-5 bg-white/50 backdrop-blur-sm rounded-2xl border border-[#D9CFC1] hover:bg-white/80 transition-all group"
+        >
+          <div className="w-10 h-10 flex items-center justify-center bg-[#25D366] text-white rounded-xl shadow-lg group-hover:scale-110 transition-transform">
+            <MessageCircle size={20} />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">WhatsApp</p>
+            <p className="text-sm font-bold tracking-tight">(69) 9 9256-4637</p>
+          </div>
+        </a>
+
+        <a 
+          href="https://www.instagram.com/dunacozinhabar/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-center gap-4 p-5 bg-white/50 backdrop-blur-sm rounded-2xl border border-[#D9CFC1] hover:bg-white/80 transition-all group"
+        >
+          <div className="w-10 h-10 flex items-center justify-center bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white rounded-xl shadow-lg group-hover:scale-110 transition-transform">
+            <Instagram size={20} />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">Instagram</p>
+            <p className="text-sm font-bold tracking-tight">@dunacozinhabar</p>
+          </div>
+        </a>
+        
+        <p className="text-center text-[10px] opacity-40 uppercase tracking-[3px] mt-4 mb-8">
+          Experiência Gastronômica • Porto Velho
+        </p>
       </div>
     </div>
   );

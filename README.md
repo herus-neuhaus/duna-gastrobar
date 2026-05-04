@@ -1,6 +1,6 @@
-# Duna Gastrobar - Sistema de Reservas
+# Duna Cozinha & Bar - Sistema de Reservas
 
-Este é o sistema oficial de reservas e gerenciamento do Duna Gastrobar, construído com Next.js e Supabase.
+Este é o sistema oficial de reservas e gerenciamento do Duna Cozinha & Bar, construído com Next.js e Supabase.
 
 ## Funcionalidades
 
@@ -33,4 +33,4 @@ Este é o sistema oficial de reservas e gerenciamento do Duna Gastrobar, constru
 
 ## Licença
 
-Exclusivo Duna Gastrobar.
+Exclusivo Duna Cozinha & Bar.

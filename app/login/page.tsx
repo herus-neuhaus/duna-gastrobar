@@ -47,7 +47,7 @@ export default function LoginPage() {
             <Lock size={32} />
           </div>
           <h1 className="text-2xl font-serif font-bold tracking-wide uppercase">Acesso Restrito</h1>
-          <p className="text-xs opacity-60 uppercase tracking-widest mt-1">Duna Gastrobar Admin</p>
+          <p className="text-xs opacity-60 uppercase tracking-widest mt-1">Duna Cozinha & Bar Admin</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -60,7 +60,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] transition-all"
+                className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-base focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] transition-all"
                 placeholder="exemplo@email.com"
               />
             </div>
@@ -75,7 +75,7 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] transition-all"
+                className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-base focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] transition-all"
                 placeholder="••••••••"
               />
             </div>
