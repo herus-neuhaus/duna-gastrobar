@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function DunaGastrobarReservation() {
   const [activeStep, setActiveStep] = useState(1);
@@ -11,6 +12,10 @@ export default function DunaGastrobarReservation() {
   const [notes, setNotes] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', whatsapp: '' });
   const [formErrors, setFormErrors] = useState({ name: '', email: '', whatsapp: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  
+  const supabase = createClient();
 
   const validateForm = () => {
     let valid = true;
@@ -57,6 +62,33 @@ export default function DunaGastrobarReservation() {
     setActiveStep(step + 1);
   };
 
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    
+    const { error } = await supabase
+      .from('reservations')
+      .insert([
+        {
+          name: formData.name,
+          email: formData.email,
+          whatsapp: formData.whatsapp,
+          reservation_date: date,
+          reservation_time: time,
+          num_guests: guests,
+          notes: notes,
+          payment_status: (guests && guests >= 15) ? 'pending' : 'not_required',
+          payment_amount: (guests && guests >= 15) ? 100 : 0,
+        },
+      ]);
+
+    if (error) {
+      alert('Erro ao enviar reserva: ' + error.message);
+    } else {
+      setIsSuccess(true);
+    }
+    setIsSubmitting(false);
+  };
+
   const renderStepHeader = (stepNum: number, Icon: any, title: string, value: string | undefined | null) => {
     const isActive = activeStep === stepNum;
     const isCompleted = activeStep > stepNum;
@@ -90,6 +122,26 @@ export default function DunaGastrobarReservation() {
     if (guests && guests >= 15) return "Pagar R$100 e Reservar";
     return "Confirmar Reserva";
   };
+
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen bg-[#EBE3D5] flex items-center justify-center p-4 font-sans text-[#4A3728]">
+        <div className="w-full max-w-[420px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden border border-[#D9CFC1] p-12 text-center">
+          <div className="bg-green-100 text-green-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 size={40} />
+          </div>
+          <h1 className="text-2xl font-serif font-bold mb-2">Reserva Solicitada!</h1>
+          <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Você receberá uma confirmação via WhatsApp em breve.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-wider text-xs"
+          >
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#EBE3D5] flex items-center justify-center p-4 md:py-12 font-sans text-[#4A3728]">
@@ -304,11 +356,12 @@ export default function DunaGastrobarReservation() {
                 {notes && <p><strong>Observações:</strong> {notes}</p>}
               </div>
               <button 
+                disabled={isSubmitting}
                 className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-xl hover:bg-[#3d2d21] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                onClick={() => alert(getConfirmationText() + ' iniciado!')}
+                onClick={handleSubmit}
               >
-                {getConfirmationText()}
-                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : getConfirmationText()}
+                {!isSubmitting && <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>}
               </button>
               <p className="text-center text-[9px] mt-4 opacity-50 uppercase tracking-widest text-[#4A3728]">
                 Duna Gastrobar © 2024 • Política de Cancelamento
