@@ -7,13 +7,14 @@ export async function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
-    console.warn('Supabase env variables are missing during server-side execution.');
-  }
+  // Fornece fallbacks durante o build para evitar erro de inicialização.
+  // As variáveis reais devem ser inseridas no Vercel Dashboard.
+  const url = supabaseUrl || 'https://placeholder-url.supabase.co';
+  const key = supabaseKey || 'placeholder-key';
 
   return createServerClient(
-    supabaseUrl || '',
-    supabaseKey || '',
+    url,
+    key,
     {
       cookies: {
         getAll() {
@@ -25,9 +26,7 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // Ignorado em Server Components
           }
         },
       },
