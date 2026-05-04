@@ -50,11 +50,11 @@ export default function DunaGastrobarReservation() {
 
   const dates = [
     { label: 'Hoje, 04/05', value: '2026-05-04', available: true },
-    { label: 'Amanhã, 05/05', value: '2026-05-05', available: false },
+    { label: 'Amanhã, 05/05', value: '2026-05-05', available: true },
     { label: 'Qua, 06/05', value: '2026-05-06', available: true },
     { label: 'Qui, 07/05', value: '2026-05-07', available: true },
     { label: 'Sex, 08/05', value: '2026-05-08', available: true },
-    { label: 'Sáb, 09/05', value: '2026-05-09', available: false },
+    { label: 'Sáb, 09/05', value: '2026-05-09', available: true },
   ];
 
   const times = ['19:00', '19:30', '20:00', '21:00', '21:30'];
