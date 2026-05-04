@@ -1,0 +1,6 @@
+{
+  "name": "Duna Gastrobar",
+  "description": "Sistema de reservas do Duna Gastrobar com suporte a pagamento antecipado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
