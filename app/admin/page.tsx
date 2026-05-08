@@ -137,9 +137,25 @@ export default function AdminDashboard() {
     setShowDatePicker(false);
   };
 
-  const totalReservations = reservations.filter(r => r.status !== 'cancelled').length;
-  const totalGuests = reservations.filter(r => r.status !== 'cancelled').reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
-  const pendingPayments = reservations.filter(r => r.num_guests && r.num_guests >= 15 && r.payment_status === 'pending').length;
+  const totalReservations = reservations.length;
+  const activeReservations = reservations.filter(r => {
+    const s = (r.status || 'pending').toLowerCase();
+    return s !== 'cancelled' && s !== 'cancelado';
+  });
+  
+  const totalGuests = activeReservations.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+  const pendingPayments = activeReservations.filter(r => r.num_guests && r.num_guests >= 15 && r.payment_status === 'pending').length;
+
+  const statusMap: Record<string, { label: string; color: string }> = {
+    'pending': { label: 'PENDENTE', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+    'pendente': { label: 'PENDENTE', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+    'confirmed': { label: 'CONFIRMADO', color: 'bg-green-100 text-green-700 border-green-200' },
+    'confirmado': { label: 'CONFIRMADO', color: 'bg-green-100 text-green-700 border-green-200' },
+    'cancelled': { label: 'CANCELADO', color: 'bg-red-100 text-red-700 border-red-200' },
+    'cancelado': { label: 'CANCELADO', color: 'bg-red-100 text-red-700 border-red-200' },
+    'completed': { label: 'CONCLUÍDO', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    'concluido': { label: 'CONCLUÍDO', color: 'bg-blue-100 text-blue-700 border-blue-200' }
+  };
 
   const filteredReservations = reservations.filter(res => {
     const matchesSearch = res.name.toLowerCase().includes(searchTerm.toLowerCase()) || res.whatsapp.includes(searchTerm);
@@ -271,11 +287,27 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><Users size={20} strokeWidth={2.5} /></div>
-            <div>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Total Pessoas</p>
-              <p className="text-2xl font-bold">{loading ? '...' : totalGuests}</p>
-            </div>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-[#F5F2ED] rounded-2xl text-[#4A3728]">
+                  <Users size={24} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/50 mb-1">Total Pessoas</p>
+                  <div className="flex items-end gap-2">
+                    <span className={`text-2xl font-serif font-bold ${totalGuests >= 80 ? 'text-red-600' : 'text-[#4A3728]'}`}>
+                      {loading ? '...' : totalGuests}
+                    </span>
+                    <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">/ 80 limite</span>
+                  </div>
+                  {/* Barra de progresso de capacidade */}
+                  <div className="mt-2 w-full h-1.5 bg-[#EBE3D5] rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-500 ${totalGuests >= 80 ? 'bg-red-500' : totalGuests >= 60 ? 'bg-amber-500' : 'bg-[#4A3728]'}`}
+                      style={{ width: `${Math.min((totalGuests / 80) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
           </div>
           <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
             <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingPayments > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>

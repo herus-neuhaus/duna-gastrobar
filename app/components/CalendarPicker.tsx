@@ -23,9 +23,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 interface CalendarPickerProps {
   selectedDate: string;
   onDateSelect: (date: string) => void;
+  disabledDates?: string[];
 }
 
-export default function CalendarPicker({ selectedDate, onDateSelect }: CalendarPickerProps) {
+export default function CalendarPicker({ selectedDate, onDateSelect, disabledDates = [] }: CalendarPickerProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const today = startOfToday();
   const maxDate = addMonths(today, 3); // Permitir agendar até 3 meses no futuro
@@ -82,7 +83,8 @@ export default function CalendarPicker({ selectedDate, onDateSelect }: CalendarP
       for (let i = 0; i < 7; i++) {
         formattedDate = format(day, 'yyyy-MM-dd');
         const cloneDay = day;
-        const isDisabled = isBefore(day, today) || isAfter(day, maxDate);
+        const isFull = disabledDates.includes(formattedDate);
+        const isDisabled = isBefore(day, today) || isAfter(day, maxDate) || isFull;
         const isSelected = selectedDate === formattedDate;
         const isCurrentMonth = isSameMonth(day, monthStart);
 
@@ -99,6 +101,9 @@ export default function CalendarPicker({ selectedDate, onDateSelect }: CalendarP
             `}
           >
             <span>{format(day, 'd')}</span>
+            {isFull && !isSelected && isCurrentMonth && (
+              <span className="absolute top-1 right-1 text-[7px] font-bold text-red-500 uppercase">Lotado</span>
+            )}
             {isSameDay(day, today) && !isSelected && (
               <div className="absolute bottom-1.5 w-1 h-1 bg-[#4A3728] rounded-full"></div>
             )}

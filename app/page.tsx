@@ -21,6 +21,7 @@ export default function DunaGastrobarReservation() {
   
   const [capacityError, setCapacityError] = useState(false);
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
+  const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
   
   const supabase = createClient();
 
@@ -88,22 +89,48 @@ export default function DunaGastrobarReservation() {
   };
 
   const fetchCapacity = async (selectedDate: string) => {
+    // Conta tudo que NÃO é cancelado (trata nulos como pendentes implicitamente pela lógica do trigger)
     const { data, error } = await supabase
       .from('reservations')
-      .select('num_guests')
-      .eq('reservation_date', selectedDate)
-      .neq('status', 'cancelled');
+      .select('num_guests, status')
+      .eq('reservation_date', selectedDate);
     
     if (!error && data) {
-      const total = data.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+      const activeReservations = data.filter(r => {
+        const s = (r.status || 'pending').toLowerCase();
+        return s !== 'cancelled' && s !== 'cancelado';
+      });
+      
+      const total = activeReservations.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
       setTotalGuestsForDate(total);
-      if (total >= CAPACITY_LIMIT) {
-        setCapacityError(true);
-      } else {
-        setCapacityError(false);
-      }
+      setCapacityError(total >= CAPACITY_LIMIT);
     }
   };
+
+  const fetchFullDates = async () => {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('reservation_date, num_guests, status');
+    
+    if (!error && data) {
+      const dateTotals: Record<string, number> = {};
+      
+      data.forEach(res => {
+        const s = (res.status || 'pending').toLowerCase();
+        if (s !== 'cancelled' && s !== 'cancelado') {
+          dateTotals[res.reservation_date] = (dateTotals[res.reservation_date] || 0) + (res.num_guests || 0);
+        }
+      });
+      
+      const fullDates = Object.keys(dateTotals).filter(date => dateTotals[date] >= CAPACITY_LIMIT);
+      setFullyBookedDates(fullDates);
+    }
+  };
+
+  // Carrega datas lotadas ao iniciar
+  React.useEffect(() => {
+    fetchFullDates();
+  }, []);
 
   const handleWhatsAppRedirect = (reason: 'lead_time' | 'success') => {
     let message = "";
@@ -146,6 +173,25 @@ export default function DunaGastrobarReservation() {
   const handleSubmit = async () => {
     setIsSubmitting(true);
     
+    // Final pre-submit check to avoid race conditions
+    const { data: currentData } = await supabase
+      .from('reservations')
+      .select('num_guests')
+      .eq('reservation_date', date)
+      .not('status', 'ilike', 'cancelled')
+      .not('status', 'ilike', 'cancelado');
+    
+    const currentTotal = (currentData || []).reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+    
+    if (guests && (currentTotal + guests > CAPACITY_LIMIT)) {
+      setCapacityError(true);
+      setTotalGuestsForDate(currentTotal);
+      setIsSubmitting(false);
+      alert('Lamentamos, mas a capacidade para este dia acabou de ser atingida. Por favor, escolha outra data.');
+      setActiveStep(1); // Volta para a data
+      return;
+    }
+
     const { error } = await supabase
       .from('reservations')
       .insert([
@@ -157,13 +203,20 @@ export default function DunaGastrobarReservation() {
           reservation_time: time,
           num_guests: guests,
           notes: notes,
+          status: 'pending', // Status padrão
           payment_status: (guests && guests >= 15) ? 'pending' : 'not_required',
           payment_amount: (guests && guests >= 15) ? 100 : 0,
         },
       ]);
 
     if (error) {
-      alert('Erro ao enviar reserva: ' + error.message);
+      if (error.message.includes('CAPACITY_EXCEEDED')) {
+        setCapacityError(true);
+        alert('Capacidade Esgotada: Não foi possível finalizar pois o limite de 80 pessoas foi atingido para este dia.');
+        setActiveStep(1);
+      } else {
+        alert('Erro ao enviar reserva: ' + error.message);
+      }
     } else {
       setIsSuccess(true);
       handleWhatsAppRedirect('success');
@@ -250,6 +303,7 @@ export default function DunaGastrobarReservation() {
               <div className="p-4 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
                 <CalendarPicker 
                   selectedDate={date} 
+                  disabledDates={fullyBookedDates}
                   onDateSelect={(newDate) => {
                     setDate(newDate);
                     fetchCapacity(newDate);
