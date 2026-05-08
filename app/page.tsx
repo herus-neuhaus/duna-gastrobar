@@ -3,8 +3,10 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState } from 'react';
-import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import CalendarPicker from './components/CalendarPicker';
+import { format, parse, isAfter, addHours, differenceInHours, getDay } from 'date-fns';
 
 export default function DunaGastrobarReservation() {
   const [activeStep, setActiveStep] = useState(1);
@@ -17,7 +19,13 @@ export default function DunaGastrobarReservation() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   
+  const [capacityError, setCapacityError] = useState(false);
+  const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
+  
   const supabase = createClient();
+
+  const CAPACITY_LIMIT = 80;
+  const WHATSAPP_NUMBER = "5569992564637";
 
   const validateForm = () => {
     let valid = true;
@@ -48,17 +56,81 @@ export default function DunaGastrobarReservation() {
     return valid;
   };
 
-  const dates = [
-    { label: 'Hoje, 04/05', value: '2026-05-04', available: true },
-    { label: 'Amanhã, 05/05', value: '2026-05-05', available: true },
-    { label: 'Qua, 06/05', value: '2026-05-06', available: true },
-    { label: 'Qui, 07/05', value: '2026-05-07', available: true },
-    { label: 'Sex, 08/05', value: '2026-05-08', available: true },
-    { label: 'Sáb, 09/05', value: '2026-05-09', available: true },
-  ];
+  const getAvailableTimes = (selectedDate: string) => {
+    if (!selectedDate) return [];
+    
+    const dateObj = parse(selectedDate, 'yyyy-MM-dd', new Date());
+    const dayOfWeek = getDay(dateObj); // 0 = Sunday, 1 = Monday, ...
+    
+    // Terça a quinta: 1, 2, 3, 4
+    if (dayOfWeek >= 2 && dayOfWeek <= 4) {
+      return ['12:00', '12:30', '13:00', '13:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
+    }
+    
+    // Sexta a domingo: 5, 6, 0
+    if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
+      return ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00'];
+    }
+    
+    return []; // Segunda ou erro
+  };
 
-  const times = ['19:00', '19:30', '20:00', '21:00', '21:30'];
+  const checkLeadTime = (selectedDate: string, selectedTime: string) => {
+    if (!selectedDate || !selectedTime) return true;
+    
+    const reservationDateTime = parse(`${selectedDate} ${selectedTime}`, 'yyyy-MM-dd HH:mm', new Date());
+    const now = new Date();
+    
+    // Diferença em horas
+    const diff = differenceInHours(reservationDateTime, now);
+    
+    return diff >= 8;
+  };
+
+  const fetchCapacity = async (selectedDate: string) => {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('num_guests')
+      .eq('reservation_date', selectedDate)
+      .neq('status', 'cancelled');
+    
+    if (!error && data) {
+      const total = data.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+      setTotalGuestsForDate(total);
+      if (total >= CAPACITY_LIMIT) {
+        setCapacityError(true);
+      } else {
+        setCapacityError(false);
+      }
+    }
+  };
+
+  const handleWhatsAppRedirect = (reason: 'lead_time' | 'success') => {
+    let message = "";
+    if (reason === 'lead_time') {
+      message = `Olá, gostaria de fazer uma reserva para o dia ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} às ${time} para ${guests} pessoas, mas o sistema informou que é necessário agendar com 8h de antecedência. Poderia me ajudar?`;
+    } else {
+      message = `Confirmação de Reserva – Duna Cozinha & Bar\n\nOlá! Acabei de realizar uma reserva pelo site e gostaria de confirmar os detalhes:\n\nNome: ${formData.name}\nData: ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}\nHorário: ${time}\nPessoas: ${guests} convidados\n\nFico no aguardo da confirmação de vocês. Obrigado!`;
+    }
+    
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const guestOptions = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  const resetForm = () => {
+    setActiveStep(1);
+    setDate('');
+    setGuests(null);
+    setTime('');
+    setNotes('');
+    setFormData({ name: '', email: '', whatsapp: '' });
+    setFormErrors({ name: '', email: '', whatsapp: '' });
+    setIsSuccess(false);
+    setCapacityError(false);
+    setTotalGuestsForDate(0);
+  };
 
   const handleNext = (step: number) => {
     setActiveStep(step + 1);
@@ -87,6 +159,7 @@ export default function DunaGastrobarReservation() {
       alert('Erro ao enviar reserva: ' + error.message);
     } else {
       setIsSuccess(true);
+      handleWhatsAppRedirect('success');
     }
     setIsSubmitting(false);
   };
@@ -133,12 +206,12 @@ export default function DunaGastrobarReservation() {
             <CheckCircle2 size={40} />
           </div>
           <h1 className="text-2xl font-serif font-bold mb-2">Reserva Solicitada!</h1>
-          <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Você receberá uma confirmação via WhatsApp em breve.</p>
+          <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Enviamos os detalhes para o nosso WhatsApp para agilizar sua confirmação.</p>
           <button 
-            onClick={() => window.location.reload()}
+            onClick={resetForm}
             className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-wider text-xs"
           >
-            Voltar ao Início
+            Fazer outra reserva
           </button>
         </div>
       </div>
@@ -157,48 +230,45 @@ export default function DunaGastrobarReservation() {
         {/* Accordion Container */}
         <div className="flex-1 overflow-y-auto divide-y divide-[#D9CFC1]">
           
-          {/* Step 1: Date */}
           <div className="bg-[#FDFBF7]">
-            {renderStepHeader(1, Calendar, "Qual a data?", date ? dates.find(d => d.value === date)?.label : '')}
+            {renderStepHeader(1, Calendar, "Qual a data?", date ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : '')}
             {activeStep === 1 && (
               <div className="p-4 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="space-y-2">
-                  {dates.map((d) => (
-                    <button
-                      key={d.value}
-                      disabled={!d.available}
-                      onClick={() => { setDate(d.value); handleNext(1); }}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        !d.available 
-                          ? 'border-[#D9CFC1] opacity-40 cursor-not-allowed' 
-                          : date === d.value 
-                            ? 'border-[#4A3728] bg-[#4A3728] text-white' 
-                            : 'border-[#D9CFC1] hover:bg-[#F5F2ED] text-[#4A3728]'
-                      }`}
-                    >
-                      <span className="text-sm font-bold uppercase tracking-wide">{d.label}</span>
-                      {!d.available && <span className="text-[9px] uppercase tracking-wider bg-[#D9CFC1]/30 px-2 py-1 rounded text-[#4A3728]">Esgotado</span>}
-                    </button>
-                  ))}
-                </div>
+                <CalendarPicker 
+                  selectedDate={date} 
+                  onDateSelect={(newDate) => {
+                    setDate(newDate);
+                    fetchCapacity(newDate);
+                    handleNext(1);
+                  }} 
+                />
               </div>
             )}
           </div>
 
-          {/* Step 2: People */}
           <div className="bg-[#FDFBF7]">
             {renderStepHeader(2, Users, "Quantas pessoas?", guests ? `${guests} pessoa${guests > 1 ? 's' : ''}` : '')}
             {activeStep === 2 && (
               <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                {capacityError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed text-red-800">
+                      <strong>Capacidade Esgotada:</strong> Infelizmente já atingimos o limite de 80 pessoas para este dia no sistema. Tente outra data ou fale conosco no WhatsApp.
+                    </p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-5 gap-2 mb-4">
                   {guestOptions.map((num) => (
                     <button
                       key={num}
+                      disabled={capacityError || (totalGuestsForDate + num > CAPACITY_LIMIT)}
                       onClick={() => setGuests(num)}
                       className={`py-2 rounded-lg text-xs font-medium border transition-all ${
                         guests === num
                           ? 'border-[#4A3728] bg-[#4A3728] text-white'
-                          : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED]'
+                          : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED] disabled:opacity-20 disabled:cursor-not-allowed'
                       }`}
                     >
                       {num}
@@ -217,7 +287,7 @@ export default function DunaGastrobarReservation() {
                 )}
 
                 <button 
-                  disabled={!guests}
+                  disabled={!guests || capacityError}
                   onClick={() => handleNext(2)}
                   className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#3d2d21] transition-colors"
                 >
@@ -227,13 +297,12 @@ export default function DunaGastrobarReservation() {
             )}
           </div>
 
-          {/* Step 3: Time */}
           <div className="bg-[#FDFBF7]">
             {renderStepHeader(3, Clock, "Qual o horário?", time)}
             {activeStep === 3 && (
               <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="grid grid-cols-2 gap-3 mb-6">
-                  {times.map((t) => (
+                  {getAvailableTimes(date).map((t) => (
                     <button
                       key={t}
                       onClick={() => setTime(t)}
@@ -247,8 +316,27 @@ export default function DunaGastrobarReservation() {
                     </button>
                   ))}
                 </div>
+
+                {!checkLeadTime(date, time) && time && (
+                  <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
+                        Reservas para hoje com menos de 8 horas de antecedência devem ser feitas diretamente via WhatsApp.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => handleWhatsAppRedirect('lead_time')}
+                      className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={14} />
+                      Solicitar via WhatsApp
+                    </button>
+                  </div>
+                )}
+
                 <button 
-                  disabled={!time}
+                  disabled={!time || !checkLeadTime(date, time)}
                   onClick={() => handleNext(3)}
                   className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#3d2d21] transition-colors"
                 >
@@ -350,11 +438,15 @@ export default function DunaGastrobarReservation() {
         {activeStep === 6 && (
             <div className="p-6 pt-5 bg-[#FDFBF7] border-t border-[#D9CFC1] animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="flex flex-col gap-2 text-[11px] text-[#4A3728] mb-6 bg-white p-4 rounded-xl border border-[#D9CFC1] shadow-sm">
-                <p><strong>Data:</strong> {dates.find(d => d.value === date)?.label}</p>
+                <p><strong>Data:</strong> {format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}</p>
                 <p><strong>Horário:</strong> {time}</p>
                 <p><strong>Pessoas:</strong> {guests} pessoa{guests !== 1 ? 's' : ''}</p>
                 <p><strong>Em nome de:</strong> {formData.name}</p>
                 {notes && <p><strong>Observações:</strong> {notes}</p>}
+                <div className="mt-2 pt-2 border-t border-[#F5F2ED] flex items-center gap-2 text-amber-600 font-bold uppercase tracking-[1px] text-[9px]">
+                  <Clock size={12} />
+                  <span>Limite de espera: 20 minutos</span>
+                </div>
               </div>
               <button 
                 disabled={isSubmitting}

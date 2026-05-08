@@ -2,11 +2,40 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
-import { Calendar, Users, DollarSign, Search, MessageCircle, CheckCircle, XCircle, Clock, AlertCircle, LogOut, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Calendar as CalendarIcon, 
+  Users, 
+  DollarSign, 
+  Search, 
+  MessageCircle, 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  AlertCircle, 
+  LogOut, 
+  Loader2, 
+  ChevronDown,
+  Filter,
+  CalendarDays,
+  ArrowRight
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Database } from '@/lib/supabase/database.types';
+import { 
+  format, 
+  startOfToday, 
+  startOfTomorrow, 
+  startOfWeek, 
+  endOfWeek, 
+  startOfMonth, 
+  endOfMonth, 
+  parseISO,
+  isWithinInterval,
+  isSameDay
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 type Reservation = Database['public']['Tables']['reservations']['Row'];
 type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
@@ -15,33 +44,41 @@ export default function AdminDashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('Hoje');
+  
+  // Date states
+  const [startDate, setStartDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
+  const [quickFilter, setQuickFilter] = useState('Hoje');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  
   const supabase = createClient();
   const router = useRouter();
+  const datePickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchReservations();
-  }, [dateFilter]);
+  }, [startDate, endDate]);
+
+  // Close date picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
+        setShowDatePicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchReservations = async () => {
     setLoading(true);
-    let query = supabase
+    const { data, error } = await supabase
       .from('reservations')
       .select('*')
+      .gte('reservation_date', startDate)
+      .lte('reservation_date', endDate)
       .order('reservation_date', { ascending: true })
       .order('reservation_time', { ascending: true });
-
-    // Simple date filtering logic
-    const today = new Date().toISOString().split('T')[0];
-    if (dateFilter === 'Hoje') {
-      query = query.eq('reservation_date', today);
-    } else if (dateFilter === 'Amanhã') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      query = query.eq('reservation_date', tomorrow.toISOString().split('T')[0]);
-    }
-
-    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching reservations:', error);
@@ -70,9 +107,39 @@ export default function AdminDashboard() {
     router.refresh();
   };
 
+  const handleQuickFilter = (filter: string) => {
+    setQuickFilter(filter);
+    const today = startOfToday();
+    
+    switch (filter) {
+      case 'Hoje':
+        setStartDate(format(today, 'yyyy-MM-dd'));
+        setEndDate(format(today, 'yyyy-MM-dd'));
+        break;
+      case 'Amanhã':
+        const tomorrow = startOfTomorrow();
+        setStartDate(format(tomorrow, 'yyyy-MM-dd'));
+        setEndDate(format(tomorrow, 'yyyy-MM-dd'));
+        break;
+      case 'Semana':
+        setStartDate(format(startOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd'));
+        setEndDate(format(endOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd'));
+        break;
+      case 'Mês':
+        setStartDate(format(startOfMonth(today), 'yyyy-MM-dd'));
+        setEndDate(format(endOfMonth(today), 'yyyy-MM-dd'));
+        break;
+      case 'Geral':
+        setStartDate('2024-01-01');
+        setEndDate('2030-12-31');
+        break;
+    }
+    setShowDatePicker(false);
+  };
+
   const totalReservations = reservations.filter(r => r.status !== 'cancelled').length;
-  const totalGuests = reservations.filter(r => r.status !== 'cancelled').reduce((acc, curr) => acc + curr.num_guests, 0);
-  const pendingPayments = reservations.filter(r => r.num_guests >= 15 && r.payment_status === 'pending').length;
+  const totalGuests = reservations.filter(r => r.status !== 'cancelled').reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+  const pendingPayments = reservations.filter(r => r.num_guests && r.num_guests >= 15 && r.payment_status === 'pending').length;
 
   const filteredReservations = reservations.filter(res => {
     const matchesSearch = res.name.toLowerCase().includes(searchTerm.toLowerCase()) || res.whatsapp.includes(searchTerm);
@@ -82,184 +149,312 @@ export default function AdminDashboard() {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'confirmed':
-        return <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-md text-xs font-bold uppercase tracking-wider border border-green-200">Confirmado</span>;
+        return <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-green-200">Confirmado</span>;
       case 'pending':
-        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-xs font-bold uppercase tracking-wider border border-amber-200">Pendente</span>;
+        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">Pendente</span>;
       case 'cancelled':
-        return <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-xs font-bold uppercase tracking-wider border border-red-200">Cancelado</span>;
+        return <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-red-200">Cancelado</span>;
       case 'completed':
-        return <span className="px-2.5 py-1 bg-[#EBE3D5] text-[#4A3728] rounded-md text-xs font-bold uppercase tracking-wider border border-[#D9CFC1]">Concluído</span>;
+        return <span className="px-2.5 py-1 bg-[#EBE3D5] text-[#4A3728] rounded-md text-[10px] font-bold uppercase tracking-wider border border-[#D9CFC1]">Concluído</span>;
       default:
-        return <span className="px-2.5 py-1 bg-gray-100 text-gray-800 rounded-md text-xs font-bold uppercase tracking-wider border border-gray-200">{status}</span>;
+        return <span className="px-2.5 py-1 bg-gray-100 text-gray-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-gray-200">{status}</span>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] p-4 lg:p-8">
-      {/* Header */}
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-serif font-bold tracking-wide">Duna Cozinha & Bar</h1>
-          <p className="text-sm font-medium tracking-widest uppercase opacity-70 mt-1">Controle de Reservas</p>
-        </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="text-sm font-bold uppercase tracking-wider bg-white px-5 py-3 rounded-xl shadow-sm border border-[#D9CFC1] flex items-center gap-2 flex-1 sm:flex-none">
-            <Calendar size={16} />
-            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728]">
+      {/* Sidebar/Mobile Header */}
+      <header className="sticky top-0 z-30 bg-[#4A3728] text-white p-4 lg:px-8 shadow-md">
+        <div className="flex justify-between items-center max-w-7xl mx-auto">
+          <div>
+            <h1 className="text-lg lg:text-xl font-serif font-bold tracking-widest uppercase">Duna Cozinha & Bar</h1>
+            <p className="text-[10px] font-medium tracking-[0.2em] uppercase opacity-60">Controle de Reservas</p>
           </div>
           <button 
             onClick={handleLogout}
-            className="p-3 bg-white text-red-500 rounded-xl shadow-sm border border-[#D9CFC1] hover:bg-red-50 transition-colors"
+            className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-colors border border-white/10"
             title="Sair"
           >
-            <LogOut size={20} />
+            <LogOut size={18} />
           </button>
         </div>
       </header>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6 mb-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#D9CFC1] flex items-center gap-5">
-          <div className="w-14 h-14 flex items-center justify-center bg-[#EBE3D5] text-[#4A3728] rounded-xl"><Calendar size={24} strokeWidth={2.5} /></div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#4A3728]/60 mb-1">Total de Reservas ({dateFilter})</p>
-            <p className="text-3xl font-bold">{loading ? '...' : totalReservations}</p>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#D9CFC1] flex items-center gap-5">
-          <div className="w-14 h-14 flex items-center justify-center bg-[#EBE3D5] text-[#4A3728] rounded-xl"><Users size={24} strokeWidth={2.5} /></div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#4A3728]/60 mb-1">Pessoas Esperadas</p>
-            <p className="text-3xl font-bold">{loading ? '...' : totalGuests}</p>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-[#D9CFC1] flex items-center gap-5">
-          <div className={`w-14 h-14 flex items-center justify-center rounded-xl ${pendingPayments > 0 ? 'bg-red-100 text-red-600' : 'bg-[#EBE3D5] text-[#4A3728]'}`}>
-            <DollarSign size={24} strokeWidth={2.5} />
-          </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#4A3728]/60 mb-1">Pagos Pendentes (15+)</p>
-            <p className="text-3xl font-bold flex items-center gap-2">
-              {loading ? '...' : pendingPayments}
-              {pendingPayments > 0 && <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters and Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-[#D9CFC1] overflow-hidden flex flex-col">
+      <main className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
         
-        {/* Filters bar */}
-        <div className="p-5 border-b border-[#D9CFC1] flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#FDFBF7]">
-          <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
-            {['Hoje', 'Amanhã', 'Geral'].map(filter => (
-              <button 
-                key={filter}
-                onClick={() => setDateFilter(filter)}
-                className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-                  dateFilter === filter ? 'bg-[#4A3728] text-white' : 'bg-white border border-[#D9CFC1] text-[#4A3728] hover:bg-[#EBE3D5]'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
+        {/* Date Filter Bar */}
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+          <div className="relative" ref={datePickerRef}>
+            <button 
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className="flex items-center gap-3 bg-white px-5 py-3 rounded-2xl shadow-sm border border-[#D9CFC1] hover:border-[#4A3728] transition-all w-full lg:w-auto"
+            >
+              <CalendarDays size={20} className="text-[#4A3728]/60" />
+              <div className="text-left">
+                <p className="text-[10px] font-bold uppercase tracking-tighter text-[#4A3728]/40 leading-none mb-1">Período Selecionado</p>
+                <p className="text-xs font-bold whitespace-nowrap">
+                  {quickFilter === 'Personalizado' 
+                    ? `${format(parseISO(startDate), 'dd/MM')} até ${format(parseISO(endDate), 'dd/MM')}`
+                    : quickFilter
+                  }
+                </p>
+              </div>
+              <ChevronDown size={16} className={`ml-2 text-[#4A3728]/40 transition-transform ${showDatePicker ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showDatePicker && (
+              <div className="absolute top-full left-0 mt-2 w-full lg:w-80 bg-white rounded-3xl shadow-2xl border border-[#D9CFC1] p-4 z-40 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {['Hoje', 'Amanhã', 'Semana', 'Mês', 'Geral'].map(f => (
+                    <button 
+                      key={f}
+                      onClick={() => handleQuickFilter(f)}
+                      className={`py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors ${quickFilter === f ? 'bg-[#4A3728] text-white' : 'bg-[#F5F2ED] text-[#4A3728] hover:bg-[#EBE3D5]'}`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="pt-4 border-t border-[#D9CFC1]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/40 mb-3 px-1">Personalizado</p>
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Início</label>
+                      <input 
+                        type="date" 
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          setQuickFilter('Personalizado');
+                        }}
+                        className="w-full bg-[#F5F2ED] border-none rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-1 focus:ring-[#4A3728]"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Fim</label>
+                      <input 
+                        type="date" 
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          setQuickFilter('Personalizado');
+                        }}
+                        className="w-full bg-[#F5F2ED] border-none rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-1 focus:ring-[#4A3728]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4A3728]/50" size={16} />
+
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#4A3728]/30" size={18} />
             <input 
               type="text" 
               placeholder="Buscar cliente ou telefone..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#D9CFC1] rounded-lg text-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] placeholder:text-[#4A3728]/40"
+              className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-sm shadow-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] placeholder:text-[#4A3728]/30 transition-all"
             />
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap min-w-[800px]">
-            <thead className="bg-[#EBE3D5]/50 text-[#4A3728]">
-              <tr>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider">Cliente</th>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider">Contato</th>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider">Data & Hora</th>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider">Pessoas</th>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 font-bold text-[11px] uppercase tracking-wider text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#D9CFC1]">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <Loader2 className="animate-spin mx-auto text-[#4A3728]/50" size={32} />
-                  </td>
-                </tr>
-              ) : filteredReservations.map((res) => (
-                <tr key={res.id} className={`hover:bg-[#FDFBF7] transition-colors ${res.num_guests >= 15 ? 'bg-amber-50/50' : ''}`}>
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-[13px]">{res.name}</p>
+        {/* KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
+            <div className="w-12 h-12 flex items-center justify-center bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><CalendarIcon size={20} strokeWidth={2.5} /></div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Reservas</p>
+              <p className="text-2xl font-bold">{loading ? '...' : totalReservations}</p>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
+            <div className="w-12 h-12 flex items-center justify-center bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><Users size={20} strokeWidth={2.5} /></div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Total Pessoas</p>
+              <p className="text-2xl font-bold">{loading ? '...' : totalGuests}</p>
+            </div>
+          </div>
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
+            <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingPayments > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>
+              <DollarSign size={20} strokeWidth={2.5} />
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pendentes (15+)</p>
+              <div className="flex items-center gap-2">
+                <p className="text-2xl font-bold">{loading ? '...' : pendingPayments}</p>
+                {pendingPayments > 0 && <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
+              <Loader2 className="animate-spin text-[#4A3728]/20 mb-4" size={40} />
+              <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/40">Carregando reservas...</p>
+            </div>
+          ) : filteredReservations.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
+              <AlertCircle size={40} className="mx-auto text-[#4A3728]/10 mb-4" />
+              <p className="text-sm font-bold text-[#4A3728]/40">Nenhuma reserva encontrada para este período.</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop View (Tabela) */}
+              <div className="hidden lg:block bg-white rounded-3xl shadow-sm border border-[#D9CFC1] overflow-hidden">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-[#F5F2ED] text-[#4A3728]">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Cliente</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Data & Hora</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-center">Pessoas</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#D9CFC1]/40">
+                    {filteredReservations.map((res) => (
+                      <tr key={res.id} className="hover:bg-[#FDFBF7] transition-colors group">
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">{res.name}</span>
+                            <span className="text-[11px] text-[#4A3728]/50 mt-0.5">{res.whatsapp}</span>
+                            {res.notes && (
+                              <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 w-fit px-2 py-0.5 rounded-lg">
+                                <AlertCircle size={10} />
+                                {res.notes}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[13px]">{format(parseISO(res.reservation_date), 'dd/MM/yyyy')}</span>
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#4A3728]/60 mt-1">
+                              <Clock size={12} /> {res.reservation_time.slice(0, 5)}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-center">
+                          <div className="inline-flex items-center justify-center gap-2">
+                            <span className="font-bold text-lg">{res.num_guests}</span>
+                            {res.num_guests && res.num_guests >= 15 && (
+                              <span className="bg-amber-100 text-amber-800 text-[8px] uppercase font-bold tracking-tighter px-1.5 py-0.5 rounded border border-amber-200">Grupo</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          {getStatusBadge(res.status)}
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => updateStatus(res.id, 'confirmed')}
+                              className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-xl border border-green-200 transition-colors"
+                              title="Confirmar"
+                            >
+                              <CheckCircle size={18} />
+                            </button>
+                            <button 
+                              onClick={() => updateStatus(res.id, 'cancelled')}
+                              className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-colors"
+                              title="Cancelar"
+                            >
+                              <XCircle size={18} />
+                            </button>
+                            <button 
+                              onClick={() => window.open(`https://wa.me/${res.whatsapp.replace(/\D/g, '')}`, '_blank')}
+                              className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors"
+                              title="WhatsApp"
+                            >
+                              <MessageCircle size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View (Cards) */}
+              <div className="lg:hidden space-y-4">
+                {filteredReservations.map((res) => (
+                  <div key={res.id} className={`bg-white rounded-3xl p-5 shadow-sm border ${res.num_guests && res.num_guests >= 15 ? 'border-amber-200' : 'border-[#D9CFC1]'}`}>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-bold text-base leading-tight">{res.name}</h3>
+                        <p className="text-xs text-[#4A3728]/50 mt-1 font-medium">{res.whatsapp}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1.5 justify-end text-[#4A3728] font-bold">
+                          <Users size={16} />
+                          <span className="text-lg">{res.num_guests}</span>
+                        </div>
+                        {res.num_guests && res.num_guests >= 15 && (
+                          <span className="text-[8px] font-bold uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Reserva de Grupo</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 py-3 border-y border-[#D9CFC1]/40 mb-4">
+                      <div className="flex flex-col">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/40 mb-0.5">Data</p>
+                        <p className="text-xs font-bold">{format(parseISO(res.reservation_date), 'dd/MM/yyyy')}</p>
+                      </div>
+                      <div className="w-px h-6 bg-[#D9CFC1]/40"></div>
+                      <div className="flex flex-col">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/40 mb-0.5">Horário</p>
+                        <p className="text-xs font-bold">{res.reservation_time.slice(0, 5)}</p>
+                      </div>
+                      <div className="flex-1 text-right">
+                        {getStatusBadge(res.status)}
+                      </div>
+                    </div>
+
                     {res.notes && (
-                      <div className="flex items-center gap-1.5 mt-1.5 text-[11px] font-medium text-amber-700 bg-amber-100/50 w-fit px-2 py-0.5 rounded-md">
-                        <AlertCircle size={10} />
-                        {res.notes}
+                      <div className="mb-4 p-3 bg-amber-50 rounded-2xl border border-amber-100">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-amber-700 mb-1">Observações</p>
+                        <p className="text-[11px] leading-relaxed text-amber-900">{res.notes}</p>
                       </div>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-[13px]">{res.whatsapp}</td>
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-[13px] ">{new Date(res.reservation_date).toLocaleDateString('pt-BR')}</p>
-                    <p className="text-[#4A3728]/70 text-xs flex items-center gap-1.5 mt-1 font-medium bg-[#EBE3D5] w-fit px-2 py-0.5 rounded-md"><Clock size={10}/> {res.reservation_time.slice(0, 5)}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-base">{res.num_guests}</span>
-                      {res.num_guests >= 15 && <span className="bg-amber-100 border border-amber-200 text-amber-800 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded">Grupo</span>}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {getStatusBadge(res.status)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-center gap-2">
+
+                    <div className="grid grid-cols-3 gap-2">
                       <button 
                         onClick={() => updateStatus(res.id, 'confirmed')}
-                        className="p-2 text-green-600 bg-white hover:bg-green-50 rounded-lg transition-colors border border-green-200 shadow-sm"
-                        title="Confirmar"
+                        className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-green-50 text-green-700 border border-green-100 active:scale-95 transition-all"
                       >
-                        <CheckCircle size={16} />
+                        <CheckCircle size={18} />
+                        <span className="text-[9px] font-bold uppercase">Confirmar</span>
                       </button>
                       <button 
                         onClick={() => updateStatus(res.id, 'cancelled')}
-                        className="p-2 text-red-600 bg-white hover:bg-red-50 rounded-lg transition-colors border border-red-200 shadow-sm"
-                        title="Cancelar"
+                        className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-red-50 text-red-700 border border-red-100 active:scale-95 transition-all"
                       >
-                        <XCircle size={16} />
+                        <XCircle size={18} />
+                        <span className="text-[9px] font-bold uppercase">Cancelar</span>
                       </button>
                       <button 
-                        className="p-2 text-[#4A3728] bg-white hover:bg-[#EBE3D5] rounded-lg transition-colors border border-[#D9CFC1] shadow-sm ml-2"
-                        title="WhatsApp"
                         onClick={() => window.open(`https://wa.me/${res.whatsapp.replace(/\D/g, '')}`, '_blank')}
+                        className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"
                       >
-                        <MessageCircle size={16} />
+                        <MessageCircle size={18} />
+                        <span className="text-[9px] font-bold uppercase">WhatsApp</span>
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {!loading && filteredReservations.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[#4A3728]/50">
-                    Nenhuma reserva encontrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
+
