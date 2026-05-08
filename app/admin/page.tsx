@@ -368,7 +368,11 @@ export default function AdminDashboard() {
                               <XCircle size={18} />
                             </button>
                             <button 
-                              onClick={() => window.open(`https://wa.me/${res.whatsapp.replace(/\D/g, '')}`, '_blank')}
+                              onClick={() => {
+                                const phone = res.whatsapp.replace(/\D/g, '');
+                                const formattedPhone = phone.startsWith('55') ? phone : `55${phone}`;
+                                window.open(`https://wa.me/${formattedPhone}`, '_blank');
+                              }}
                               className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors"
                               title="WhatsApp"
                             >
@@ -440,7 +444,11 @@ export default function AdminDashboard() {
                         <span className="text-[9px] font-bold uppercase">Cancelar</span>
                       </button>
                       <button 
-                        onClick={() => window.open(`https://wa.me/${res.whatsapp.replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => {
+                          const phone = res.whatsapp.replace(/\D/g, '');
+                          const formattedPhone = phone.startsWith('55') ? phone : `55${phone}`;
+                          window.open(`https://wa.me/${formattedPhone}`, '_blank');
+                        }}
                         className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"
                       >
                         <MessageCircle size={18} />

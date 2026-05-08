@@ -114,7 +114,14 @@ export default function DunaGastrobarReservation() {
     }
     
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    
+    // For mobile reliability, we try window.location for automated redirects, 
+    // but the manual button is the primary fallback.
+    try {
+      window.open(url, '_blank');
+    } catch (e) {
+      window.location.assign(url);
+    }
   };
 
   const guestOptions = Array.from({ length: 20 }, (_, i) => i + 1);
@@ -208,8 +215,15 @@ export default function DunaGastrobarReservation() {
           <h1 className="text-2xl font-serif font-bold mb-2">Reserva Solicitada!</h1>
           <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Enviamos os detalhes para o nosso WhatsApp para agilizar sua confirmação.</p>
           <button 
+            onClick={() => handleWhatsAppRedirect('success')}
+            className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
+          >
+            <MessageCircle size={18} />
+            Confirmar no WhatsApp
+          </button>
+          <button 
             onClick={resetForm}
-            className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-wider text-xs"
+            className="w-full py-4 bg-transparent text-[#4A3728]/60 rounded-2xl font-bold uppercase tracking-wider text-[10px] hover:bg-[#F5F2ED] transition-colors"
           >
             Fazer outra reserva
           </button>
