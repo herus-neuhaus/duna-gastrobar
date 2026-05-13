@@ -37,6 +37,8 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+import WhatsAppModal from '@/app/components/WhatsAppModal';
+
 type Reservation = Database['public']['Tables']['reservations']['Row'];
 type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
 
@@ -44,6 +46,10 @@ export default function AdminDashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // WhatsApp Modal State
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   
   // Date states
   const [startDate, setStartDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
@@ -55,22 +61,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const datePickerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchReservations();
-  }, [startDate, endDate]);
-
-  // Close date picker when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
-        setShowDatePicker(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const fetchReservations = async () => {
+  const fetchReservations = React.useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('reservations')
@@ -86,7 +77,22 @@ export default function AdminDashboard() {
       setReservations(data || []);
     }
     setLoading(false);
-  };
+  }, [supabase, startDate, endDate]);
+
+  useEffect(() => {
+    fetchReservations();
+  }, [fetchReservations]);
+
+  // Close date picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
+        setShowDatePicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const updateStatus = async (id: string, newStatus: ReservationStatus) => {
     const { error } = await supabase
@@ -105,6 +111,11 @@ export default function AdminDashboard() {
     await supabase.auth.signOut();
     router.push('/login');
     router.refresh();
+  };
+
+  const openWhatsAppModal = (reservation: Reservation) => {
+    setSelectedReservation(reservation);
+    setIsWhatsAppModalOpen(true);
   };
 
   const handleQuickFilter = (filter: string) => {
@@ -400,11 +411,7 @@ export default function AdminDashboard() {
                               <XCircle size={18} />
                             </button>
                             <button 
-                              onClick={() => {
-                                const phone = res.whatsapp.replace(/\D/g, '');
-                                const formattedPhone = phone.startsWith('55') ? phone : `55${phone}`;
-                                window.open(`https://wa.me/${formattedPhone}`, '_blank');
-                              }}
+                              onClick={() => openWhatsAppModal(res)}
                               className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors"
                               title="WhatsApp"
                             >
@@ -476,11 +483,7 @@ export default function AdminDashboard() {
                         <span className="text-[9px] font-bold uppercase">Cancelar</span>
                       </button>
                       <button 
-                        onClick={() => {
-                          const phone = res.whatsapp.replace(/\D/g, '');
-                          const formattedPhone = phone.startsWith('55') ? phone : `55${phone}`;
-                          window.open(`https://wa.me/${formattedPhone}`, '_blank');
-                        }}
+                        onClick={() => openWhatsAppModal(res)}
                         className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"
                       >
                         <MessageCircle size={18} />
@@ -494,6 +497,13 @@ export default function AdminDashboard() {
           )}
         </div>
       </main>
+
+      <WhatsAppModal 
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        customerName={selectedReservation?.name || ''}
+        customerPhone={selectedReservation?.whatsapp || ''}
+      />
     </div>
   );
 }

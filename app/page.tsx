@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState } from 'react';
-import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import CalendarPicker from './components/CalendarPicker';
 import { format, parse, isAfter, addHours, differenceInHours, getDay } from 'date-fns';
@@ -274,6 +274,15 @@ export default function DunaGastrobarReservation() {
             <MessageCircle size={18} />
             Confirmar no WhatsApp
           </button>
+          <a 
+            href="https://dunacozinhabar.cfshop.com.br/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-6 flex items-center justify-center gap-2 active:scale-95 transition-all"
+          >
+            <Utensils size={18} />
+            Ver Cardápio Digital
+          </a>
           <button 
             onClick={resetForm}
             className="w-full py-4 bg-transparent text-[#4A3728]/60 rounded-2xl font-bold uppercase tracking-wider text-[10px] hover:bg-[#F5F2ED] transition-colors"
@@ -534,6 +543,21 @@ export default function DunaGastrobarReservation() {
 
       {/* Footer Info */}
       <div className="mt-12 w-full max-w-[400px] flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
+        <a 
+          href="https://dunacozinhabar.cfshop.com.br/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-center gap-4 p-5 bg-white/50 backdrop-blur-sm rounded-2xl border border-[#D9CFC1] hover:bg-white/80 transition-all group"
+        >
+          <div className="w-10 h-10 flex items-center justify-center bg-[#4A3728] text-white rounded-xl shadow-lg group-hover:scale-110 transition-transform">
+            <Utensils size={20} />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">Cardápio Digital</p>
+            <p className="text-sm font-bold tracking-tight">Ver Menu Completo</p>
+          </div>
+        </a>
+
         <a 
           href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7" 
           target="_blank" 
