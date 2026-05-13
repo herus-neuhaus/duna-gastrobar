@@ -4,6 +4,9 @@ import './globals.css'; // Global styles
 export const metadata: Metadata = {
   title: 'Duna Cozinha & Bar - Reservas',
   description: 'Sistema de reservas online do Duna Cozinha & Bar.',
+  icons: {
+    icon: '/Favicon-D.png',
+  },
 };
 
 export const viewport = {
