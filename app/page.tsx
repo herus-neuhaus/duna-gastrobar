@@ -288,7 +288,7 @@ export default function DunaGastrobarReservation() {
     setIsCancelling(false);
   };
 
-  const handleChangeQuantity = (res: any) => {
+  const handleChangeQuantity = async (res: any) => {
     const newVal = parseInt(newQuantityValue);
     if (!newQuantityValue || newVal <= 0) {
       alert('Por favor, informe uma quantidade válida.');
@@ -296,6 +296,27 @@ export default function DunaGastrobarReservation() {
     }
     
     const oldVal = res.num_guests;
+
+    // Atualiza no banco de dados para 'pendente' com a nova quantidade
+    const { error } = await supabase
+      .from('reservations')
+      .update({ 
+        num_guests: newVal, 
+        status: 'pending',
+        // Se virou grupo agora, marca que precisa de pagamento
+        payment_status: (newVal >= 15 && res.payment_status === 'not_required') ? 'pending' : res.payment_status,
+        payment_amount: (newVal >= 15 && res.payment_amount === 0) ? 100 : res.payment_amount
+      })
+      .eq('id', res.id);
+
+    if (error) {
+      alert('Erro ao solicitar alteração: ' + error.message);
+      return;
+    }
+
+    // Atualiza a lista local para o cliente ver o status 'Pendente'
+    fetchUserReservations();
+    
     let paymentNote = "";
 
     if (newVal >= 15 && oldVal < 15) {
