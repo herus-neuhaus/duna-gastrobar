@@ -34,6 +34,9 @@ export default function DunaGastrobarReservation() {
   const [newQuantityValue, setNewQuantityValue] = useState('');
   const [showPaymentInfo, setShowPaymentInfo] = useState(false);
   const [paymentModalData, setPaymentModalData] = useState<any>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [reservationToCancel, setReservationToCancel] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
   
@@ -266,20 +269,23 @@ export default function DunaGastrobarReservation() {
     setIsSearching(false);
   };
 
-  const handleCancelReservation = async (id: string) => {
-    if (!confirm('Tem certeza que deseja cancelar sua reserva? Esta ação não pode ser desfeita.')) return;
+  const handleCancelReservation = async () => {
+    if (!reservationToCancel) return;
     
+    setIsCancelling(true);
     const { error } = await supabase
       .from('reservations')
       .update({ status: 'cancelled' })
-      .eq('id', id);
+      .eq('id', reservationToCancel);
     
     if (!error) {
-      alert('Reserva cancelada com sucesso.');
       fetchUserReservations();
+      setShowCancelModal(false);
+      setReservationToCancel(null);
     } else {
       alert('Erro ao cancelar reserva: ' + error.message);
     }
+    setIsCancelling(false);
   };
 
   const handleChangeQuantity = (res: any) => {
@@ -916,7 +922,10 @@ export default function DunaGastrobarReservation() {
                               Alterar Qtd
                             </button>
                             <button 
-                              onClick={() => handleCancelReservation(res.id)}
+                              onClick={() => {
+                                setReservationToCancel(res.id);
+                                setShowCancelModal(true);
+                              }}
                               className="flex items-center justify-center gap-2 py-2.5 bg-white border border-red-100 text-red-600 rounded-xl text-[9px] font-bold uppercase tracking-wider active:scale-95 transition-all"
                             >
                               <XCircle size={14} />
@@ -1013,6 +1022,40 @@ export default function DunaGastrobarReservation() {
               >
                 Voltar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#4A3728]/60 backdrop-blur-sm" onClick={() => setShowCancelModal(false)} />
+          <div className="relative w-full max-w-[340px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={32} />
+              </div>
+              <h3 className="text-[#4A3728] font-serif text-xl font-bold mb-2">Cancelar Reserva?</h3>
+              <p className="text-xs text-[#4A3728]/70 mb-6 leading-relaxed">
+                Tem certeza que deseja cancelar? Esta ação não pode ser desfeita e segue as políticas da casa.
+              </p>
+              
+              <div className="space-y-3">
+                <button 
+                  disabled={isCancelling}
+                  onClick={handleCancelReservation}
+                  className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold uppercase tracking-wider text-xs shadow-lg shadow-red-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  {isCancelling ? <Loader2 size={18} className="animate-spin" /> : "Sim, Cancelar Reserva"}
+                </button>
+                <button 
+                  onClick={() => setShowCancelModal(false)}
+                  className="w-full py-4 bg-[#F5F2ED] text-[#4A3728] rounded-2xl font-bold uppercase tracking-wider text-xs active:scale-95 transition-all"
+                >
+                  Manter Reserva
+                </button>
+              </div>
             </div>
           </div>
         </div>
