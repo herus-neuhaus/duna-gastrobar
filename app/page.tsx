@@ -1085,6 +1085,21 @@ export default function DunaGastrobarReservation() {
       {/* Footer Info */}
       <div className="mt-12 w-full max-w-[400px] flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
         <a 
+          href="https://chat.whatsapp.com/DGOBrxpcniEG8WSOTn0J6i?mode=gi_t" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-center gap-4 p-5 bg-white/50 backdrop-blur-sm rounded-2xl border border-[#D9CFC1] hover:bg-white/80 transition-all group"
+        >
+          <div className="w-10 h-10 flex items-center justify-center bg-[#25D366] text-white rounded-xl shadow-lg group-hover:scale-110 transition-transform">
+            <Users size={20} />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">Grupo Vip - Copa do Brasil 🇧🇷</p>
+            <p className="text-xs font-medium leading-relaxed">Acesse este link para entrar no meu grupo do WhatsApp</p>
+          </div>
+        </a>
+
+        <a 
           href="https://dunacozinhabar.cfshop.com.br/" 
           target="_blank" 
           rel="noopener noreferrer"
