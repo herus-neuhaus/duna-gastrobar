@@ -23,6 +23,7 @@ export default function DunaGastrobarReservation() {
   const [capacityError, setCapacityError] = useState(false);
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
+  const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
   
   // States for "My Reservations"
   const [viewMode, setViewMode] = useState<'reserve' | 'check'>('reserve');
@@ -149,6 +150,20 @@ export default function DunaGastrobarReservation() {
     fetchFullDates();
   }, []);
 
+  const fetchSpecialDate = async (selectedDate: string) => {
+    const { data, error } = await supabase
+      .from('special_dates')
+      .select('*')
+      .eq('date', selectedDate)
+      .maybeSingle();
+    
+    if (!error && data) {
+      setSpecialDateInfo(data);
+    } else {
+      setSpecialDateInfo(null);
+    }
+  };
+
   const handleWhatsAppRedirect = (reason: 'lead_time' | 'success' | 'capacity_overflow', overrideGuests?: number) => {
     let message = "";
     const displayGuests = overrideGuests || guests;
@@ -158,7 +173,12 @@ export default function DunaGastrobarReservation() {
     } else if (reason === 'capacity_overflow') {
       message = `Olá, gostaria de fazer uma reserva para o dia ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} para ${displayGuests} pessoas, mas o sistema informou que a capacidade online foi atingida. Teria alguma disponibilidade interna?`;
     } else {
-      const paymentInfo = (guests && guests >= 15) ? "\n\n*Observação:* Minha reserva é de grupo (15+ pessoas). Vou realizar o pagamento do link de R$ 100,00 e enviar o comprovante em seguida." : "";
+      let paymentInfo = "";
+      if (specialDateInfo?.requires_fee) {
+        paymentInfo = `\n\n*Observação:* Estou ciente da taxa de reserva de R$ ${Number(specialDateInfo.fee_amount).toFixed(2)} para esta data. Vou realizar o pagamento do link e enviar o comprovante em seguida.`;
+      } else if (displayGuests && displayGuests >= 15) {
+        paymentInfo = "\n\n*Observação:* Minha reserva é de grupo (15+ pessoas). Vou realizar o pagamento do link de R$ 100,00 e enviar o comprovante em seguida.";
+      }
       message = `Confirmação de Reserva – Duna Cozinha & Bar\n\nOlá! Acabei de realizar uma reserva pelo site e gostaria de confirmar os detalhes:\n\nNome: ${formData.name}\nData: ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}\nHorário: ${time}\nPessoas: ${displayGuests} convidados${paymentInfo}\n\nFico no aguardo da confirmação de vocês. Obrigado!`;
     }
     
@@ -186,6 +206,7 @@ export default function DunaGastrobarReservation() {
     setTotalGuestsForDate(0);
     setCustomGuestCount('');
     setPolicyAccepted(false);
+    setSpecialDateInfo(null);
   };
 
   const handleNext = (step: number) => {
@@ -227,8 +248,8 @@ export default function DunaGastrobarReservation() {
           num_guests: finalGuests,
           notes: notes,
           status: 'pending', // Status padrão
-          payment_status: (finalGuests && finalGuests >= 15) ? 'pending' : 'not_required',
-          payment_amount: (finalGuests && finalGuests >= 15) ? 100 : 0,
+          payment_status: (specialDateInfo?.requires_fee || (finalGuests && finalGuests >= 15)) ? 'pending' : 'not_required',
+          payment_amount: specialDateInfo?.requires_fee ? specialDateInfo.fee_amount : ((finalGuests && finalGuests >= 15) ? 100 : 0),
         },
       ]);
 
@@ -242,7 +263,7 @@ export default function DunaGastrobarReservation() {
       }
     } else {
       setIsSuccess(true);
-      if (finalGuests < 15) {
+      if (finalGuests < 15 && !specialDateInfo?.requires_fee) {
         handleWhatsAppRedirect('success');
       }
     }
@@ -379,7 +400,7 @@ export default function DunaGastrobarReservation() {
 
   const getConfirmationText = () => {
     const finalGuests = guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0);
-    if (finalGuests >= 15) return "Reservar e Pagar";
+    if (finalGuests >= 15 || specialDateInfo?.requires_fee) return "Reservar e Pagar";
     return "Confirmar Reserva";
   };
 
@@ -393,13 +414,16 @@ export default function DunaGastrobarReservation() {
           <h1 className="text-2xl font-serif font-bold mb-2">Reserva Solicitada!</h1>
           <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Enviamos os detalhes para o nosso WhatsApp para agilizar sua confirmação.</p>
           
-          {(guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 && (
+          {((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee) && (
             <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[24px] text-left animate-in fade-in zoom-in duration-500">
               <p className="text-xs font-bold text-amber-900 mb-2 uppercase tracking-wider flex items-center gap-2">
-                <AlertCircle size={16} /> Pagamento de Grupo
+                <AlertCircle size={16} /> {specialDateInfo?.requires_fee ? `Pagamento: ${specialDateInfo.description || 'Data Especial'}` : 'Pagamento de Grupo'}
               </p>
               <p className="text-[11px] text-amber-800 leading-relaxed mb-4">
-                Para reservas acima de 15 pessoas, é necessário o pagamento de <strong>R$ 100,00</strong> (revertido em consumação).
+                {specialDateInfo?.requires_fee 
+                  ? `Para reservas nesta data especial, é necessário o pagamento de taxa de reserva de ` 
+                  : `Para reservas acima de 15 pessoas, é necessário o pagamento de `}
+                <strong>R$ {specialDateInfo?.requires_fee ? Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',') : '100,00'}</strong> (revertido em consumação).
               </p>
               <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl">
                 <p className="text-[9px] text-red-800 font-bold uppercase mb-1">⚠️ Política de Atraso e Cancelamento</p>
@@ -413,7 +437,7 @@ export default function DunaGastrobarReservation() {
                 rel="noopener noreferrer"
                 className="block w-full py-3 bg-[#4A3728] text-white rounded-xl font-bold text-center text-[10px] uppercase tracking-widest shadow-lg shadow-amber-200 active:scale-95 transition-all mb-3"
               >
-                Pagar com Stone (R$ 100,00)
+                Pagar com Stone (R$ {specialDateInfo?.requires_fee ? Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',') : '100,00'})
               </a>
               <p className="text-[9px] text-amber-700/60 text-center italic">
                 *Após o pagamento, clique no botão abaixo para nos enviar o comprovante.
@@ -426,10 +450,10 @@ export default function DunaGastrobarReservation() {
             className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
           >
             <MessageCircle size={18} />
-            { (guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 ? 'Enviar Comprovante de Pagamento' : 'Confirmar no WhatsApp' }
+            { ((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee) ? 'Enviar Comprovante de Pagamento' : 'Confirmar no WhatsApp' }
           </button>
           <p className="text-center text-[9px] opacity-60 mb-6 px-4">
-            { (guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 
+            { ((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee)
               ? 'Após realizar o pagamento, clique acima para enviar o comprovante e finalizar sua reserva.' 
               : 'Clique acima para notificar nossa equipe sobre sua reserva.' }
           </p>
@@ -503,6 +527,7 @@ export default function DunaGastrobarReservation() {
                       onDateSelect={(newDate) => {
                         setDate(newDate);
                         fetchCapacity(newDate);
+                        fetchSpecialDate(newDate);
                         handleNext(1);
                       }} 
                     />
@@ -577,12 +602,15 @@ export default function DunaGastrobarReservation() {
                       </div>
                     )}
 
-                    {guests && guests >= 15 && (
+                    {guests && (guests >= 15 || specialDateInfo?.requires_fee) && (
                       <div className="mt-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2 animate-in fade-in zoom-in duration-300">
                         <div className="flex items-start gap-3">
                           <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                           <p className="text-[11px] leading-relaxed text-amber-800">
-                            <strong>Reserva de Grupo:</strong> Acima de 15 pessoas requer pagamento de taxa de R$ 100,00 (100% consumível).
+                            {specialDateInfo?.requires_fee 
+                              ? <span><strong>{specialDateInfo.description || 'Data Especial'}:</strong> Requer pagamento de taxa de reserva de R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')} (100% consumível).</span>
+                              : <span><strong>Reserva de Grupo:</strong> Acima de 15 pessoas requer pagamento de taxa de R$ 100,00 (100% consumível).</span>
+                            }
                           </p>
                         </div>
                         <div className="pl-8 text-[9px] text-red-700 font-medium leading-tight">
@@ -785,7 +813,7 @@ export default function DunaGastrobarReservation() {
                         />
                       </div>
                       <label htmlFor="terms-check" className="text-[11px] leading-relaxed text-amber-900 cursor-pointer font-medium">
-                        Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong> e que a taxa de reserva de grupo <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento.
+                        Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong> e que a taxa de reserva {specialDateInfo?.requires_fee ? 'desta data especial' : 'de grupo'} <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento.
                       </label>
                     </div>
 
