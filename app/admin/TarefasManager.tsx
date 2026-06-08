@@ -172,7 +172,7 @@ export default function TarefasManager() {
       category_id: task.category_id || '',
       time_estimate_minutes: task.time_estimate_minutes?.toString() || '15',
       scheduled_time: task.scheduled_time || '',
-      is_daily: task.is_daily,
+      is_daily: task.is_daily ?? true,
       target_date: task.target_date || '',
       assign_type: assignType,
       assigned_employee_id: task.assigned_employee_id || '',

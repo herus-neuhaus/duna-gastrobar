@@ -70,7 +70,7 @@ export default function FuncionariosManager() {
     setCreatingRole(false);
   };
 
-  const handleUpdateProfile = async (profileId: string, updates: { role?: string | null, job_role_id?: string | null }) => {
+  const handleUpdateProfile = async (profileId: string, updates: { role?: string | null, job_role_id?: string | null, full_name?: string | null }) => {
     setUpdating(profileId);
     
     const { error } = await supabase
