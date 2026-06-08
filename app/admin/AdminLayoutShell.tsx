@@ -13,11 +13,14 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import ForcePasswordChangeModal from '@/app/components/ForcePasswordChangeModal';
 
 export default function AdminLayoutShell({ children, activeItem }: { children: React.ReactNode, activeItem: string }) {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -30,6 +33,18 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
       }
 
       setUserEmail(user.email || null);
+      setUserId(user.id);
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('force_password_change')
+        .eq('id', user.id)
+        .single();
+        
+      if (profile?.force_password_change) {
+        setForcePasswordChange(true);
+      }
+
       setIsAuthorized(true);
     };
     checkAuth();
@@ -53,6 +68,12 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col lg:flex-row overflow-hidden">
+      {forcePasswordChange && userId && (
+        <ForcePasswordChangeModal 
+          userId={userId} 
+          onSuccess={() => setForcePasswordChange(false)} 
+        />
+      )}
       {/* Top Navbar Mobile */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-[#4A3728] text-white flex items-center justify-between px-6 z-40 lg:hidden shadow-md">
         <div className="flex items-center gap-3">
@@ -133,6 +154,30 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
             className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'special_dates' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
           >
             <CalendarDays size={18} /> Datas Especiais
+          </Link>
+
+          <Link 
+            href="/admin?view=funcionarios"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'funcionarios' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <Users size={18} /> Equipe
+          </Link>
+
+          <Link 
+            href="/admin?view=tarefas"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'tarefas' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <CalendarIcon size={18} /> Tarefas
+          </Link>
+
+          <Link 
+            href="/admin?view=produtividade"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'produtividade' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <CalendarDays size={18} /> Produtividade
           </Link>
         </nav>
 

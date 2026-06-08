@@ -14,42 +14,112 @@ export type Database = {
   }
   public: {
     Tables: {
+      blacklist: {
+        Row: {
+          blocked_by: string | null
+          cpf: string
+          created_at: string | null
+          end_date: string
+          id: string
+          name: string
+          reason: string | null
+          start_date: string | null
+        }
+        Insert: {
+          blocked_by?: string | null
+          cpf: string
+          created_at?: string | null
+          end_date: string
+          id?: string
+          name: string
+          reason?: string | null
+          start_date?: string | null
+        }
+        Update: {
+          blocked_by?: string | null
+          cpf?: string
+          created_at?: string | null
+          end_date?: string
+          id?: string
+          name?: string
+          reason?: string | null
+          start_date?: string | null
+        }
+        Relationships: []
+      }
+      employee_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
           email: string | null
           full_name: string | null
           id: string
+          job_role_id: string | null
           role: string | null
           updated_at: string
           whatsapp: string | null
+          force_password_change?: boolean
         }
         Insert: {
           created_at?: string
           email?: string | null
           full_name?: string | null
           id: string
+          job_role_id?: string | null
           role?: string | null
           updated_at?: string
           whatsapp?: string | null
+          force_password_change?: boolean
         }
         Update: {
           created_at?: string
           email?: string | null
           full_name?: string | null
           id?: string
+          job_role_id?: string | null
           role?: string | null
           updated_at?: string
           whatsapp?: string | null
+          force_password_change?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_job_role_id_fkey"
+            columns: ["job_role_id"]
+            isOneToOne: false
+            referencedRelation: "employee_roles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reservations: {
         Row: {
+          birth_date: string | null
+          check_in_status: string | null
+          cpf: string | null
           created_at: string
           customer_id: string | null
           email: string
+          expires_at: string | null
           id: string
+          location_id: string | null
           name: string
           notes: string | null
           num_guests: number
@@ -58,14 +128,20 @@ export type Database = {
           reservation_date: string
           reservation_time: string
           status: string | null
+          type: string | null
           updated_at: string
           whatsapp: string
         }
         Insert: {
+          birth_date?: string | null
+          check_in_status?: string | null
+          cpf?: string | null
           created_at?: string
           customer_id?: string | null
           email: string
+          expires_at?: string | null
           id?: string
+          location_id?: string | null
           name: string
           notes?: string | null
           num_guests: number
@@ -74,14 +150,20 @@ export type Database = {
           reservation_date: string
           reservation_time: string
           status?: string | null
+          type?: string | null
           updated_at?: string
           whatsapp: string
         }
         Update: {
+          birth_date?: string | null
+          check_in_status?: string | null
+          cpf?: string | null
           created_at?: string
           customer_id?: string | null
           email?: string
+          expires_at?: string | null
           id?: string
+          location_id?: string | null
           name?: string
           notes?: string | null
           num_guests?: number
@@ -90,6 +172,7 @@ export type Database = {
           reservation_date?: string
           reservation_time?: string
           status?: string | null
+          type?: string | null
           updated_at?: string
           whatsapp?: string
         }
@@ -99,6 +182,176 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      special_dates: {
+        Row: {
+          created_at: string | null
+          date: string
+          description: string | null
+          fee_amount: number | null
+          id: string
+          requires_fee: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date: string
+          description?: string | null
+          fee_amount?: number | null
+          id?: string
+          requires_fee?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          fee_amount?: number | null
+          id?: string
+          requires_fee?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      task_categories: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      task_completions: {
+        Row: {
+          completed_at: string | null
+          employee_id: string | null
+          execution_date: string
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          started_at: string | null
+          status: string
+          task_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          employee_id?: string | null
+          execution_date: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          started_at?: string | null
+          status: string
+          task_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          employee_id?: string | null
+          execution_date?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          started_at?: string | null
+          status?: string
+          task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_completions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_completions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          assigned_employee_id: string | null
+          assigned_role_id: string | null
+          category_id: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_daily: boolean | null
+          scheduled_time: string | null
+          target_date: string | null
+          time_estimate_minutes: number
+          title: string
+        }
+        Insert: {
+          assigned_employee_id?: string | null
+          assigned_role_id?: string | null
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_daily?: boolean | null
+          scheduled_time?: string | null
+          target_date?: string | null
+          time_estimate_minutes: number
+          title: string
+        }
+        Update: {
+          assigned_employee_id?: string | null
+          assigned_role_id?: string | null
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_daily?: boolean | null
+          scheduled_time?: string | null
+          target_date?: string | null
+          time_estimate_minutes?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_employee_id_fkey"
+            columns: ["assigned_employee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_assigned_role_id_fkey"
+            columns: ["assigned_role_id"]
+            isOneToOne: false
+            referencedRelation: "employee_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "task_categories"
             referencedColumns: ["id"]
           },
         ]
@@ -132,7 +385,38 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_customer_reservations: {
+        Args: { phone_param: string }
+        Returns: {
+          birth_date: string | null
+          check_in_status: string | null
+          cpf: string | null
+          created_at: string
+          customer_id: string | null
+          email: string
+          expires_at: string | null
+          id: string
+          location_id: string | null
+          name: string
+          notes: string | null
+          num_guests: number
+          payment_amount: number | null
+          payment_status: string | null
+          reservation_date: string
+          reservation_time: string
+          status: string | null
+          type: string | null
+          updated_at: string
+          whatsapp: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "reservations"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      release_expired_reservations: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

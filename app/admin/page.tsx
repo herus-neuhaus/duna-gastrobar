@@ -34,6 +34,9 @@ import {
 import WhatsAppModal from '@/app/components/WhatsAppModal';
 import AdminLayoutShell from './AdminLayoutShell';
 import SpecialDatesManager from './SpecialDatesManager';
+import FuncionariosManager from './FuncionariosManager';
+import TarefasManager from './TarefasManager';
+import ProdutividadeDashboard from './ProdutividadeDashboard';
 
 type Reservation = Database['public']['Tables']['reservations']['Row'];
 type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
@@ -264,18 +267,24 @@ function ReservationsView() {
               <div className="flex-1">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/50 mb-1">Total Pessoas</p>
                 <div className="flex items-end gap-2">
-                  <span className={`text-2xl font-serif font-bold ${totalGuests >= 80 ? 'text-red-600' : 'text-[#4A3728]'}`}>
+                  <span className={`text-2xl font-serif font-bold ${(startDate === endDate && totalGuests >= 80) ? 'text-red-600' : 'text-[#4A3728]'}`}>
                     {loading ? '...' : totalGuests}
                   </span>
-                  <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">/ 80 limite</span>
+                  {startDate === endDate ? (
+                    <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">/ 80 limite</span>
+                  ) : (
+                    <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">(80 limite/dia)</span>
+                  )}
                 </div>
-                {/* Barra de progresso de capacidade */}
-                <div className="mt-2 w-full h-1.5 bg-[#EBE3D5] rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full transition-all duration-500 ${totalGuests >= 80 ? 'bg-red-500' : totalGuests >= 60 ? 'bg-amber-500' : 'bg-[#4A3728]'}`}
-                    style={{ width: `${Math.min((totalGuests / 80) * 100, 100)}%` }}
-                  />
-                </div>
+                {/* Barra de progresso de capacidade (apenas para um único dia) */}
+                {startDate === endDate && (
+                  <div className="mt-2 w-full h-1.5 bg-[#EBE3D5] rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-500 ${totalGuests >= 80 ? 'bg-red-500' : totalGuests >= 60 ? 'bg-amber-500' : 'bg-[#4A3728]'}`}
+                      style={{ width: `${Math.min((totalGuests / 80) * 100, 100)}%` }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
         </div>
@@ -476,14 +485,24 @@ function AdminDashboardContent() {
         <h2 className="text-3xl font-serif font-bold uppercase tracking-tight text-[#4A3728]">
           {view === 'reservations' && 'Monitor de Reservas'}
           {view === 'special_dates' && 'Gestão de Datas Especiais'}
+          {view === 'funcionarios' && 'Gestão de Equipe'}
+          {view === 'tarefas' && 'Gestão de Tarefas'}
+          {view === 'produtividade' && 'Painel de Produtividade'}
         </h2>
         <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/50">
           {view === 'reservations' && 'Acompanhe as reservas do dia'}
           {view === 'special_dates' && 'Configure datas com taxas de reserva antecipadas'}
+          {view === 'funcionarios' && 'Gerencie funcionários e cargos'}
+          {view === 'tarefas' && 'Crie e organize tarefas e checklists'}
+          {view === 'produtividade' && 'Monitore a execução das tarefas e aprove conclusões'}
         </p>
       </header>
       <div className="p-6 lg:p-10">
-        {view === 'reservations' ? <ReservationsView /> : <SpecialDatesManager />}
+        {view === 'reservations' && <ReservationsView />}
+        {view === 'special_dates' && <SpecialDatesManager />}
+        {view === 'funcionarios' && <FuncionariosManager />}
+        {view === 'tarefas' && <TarefasManager />}
+        {view === 'produtividade' && <ProdutividadeDashboard />}
       </div>
     </AdminLayoutShell>
   );

@@ -2,14 +2,19 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import CalendarPicker from './components/CalendarPicker';
-import { format, parse, isAfter, addHours, differenceInHours, getDay } from 'date-fns';
+import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function DunaGastrobarReservation() {
-  const [activeStep, setActiveStep] = useState(1);
+  // Dropdown Open States
+  const [isDataOpen, setIsDataOpen] = useState(false);
+  const [isPessoasOpen, setIsPessoasOpen] = useState(false);
+  const [isHorarioOpen, setIsHorarioOpen] = useState(false);
+
+  // Form Fields
   const [date, setDate] = useState('');
   const [guests, setGuests] = useState<number | null>(null);
   const [time, setTime] = useState('');
@@ -17,9 +22,10 @@ export default function DunaGastrobarReservation() {
   const [customGuestCount, setCustomGuestCount] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', whatsapp: '' });
   const [formErrors, setFormErrors] = useState({ name: '', email: '', whatsapp: '' });
+  
+  // Status States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  
   const [capacityError, setCapacityError] = useState(false);
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
@@ -45,6 +51,37 @@ export default function DunaGastrobarReservation() {
 
   const CAPACITY_LIMIT = 80;
   const WHATSAPP_NUMBER = "5569992564637";
+
+  // Formata a data em português com as primeiras letras maiúsculas
+  const formatDisplayDate = (d: Date) => {
+    const formatted = format(d, "EEEE, dd 'de' MMMM", { locale: ptBR });
+    return formatted
+      .split(' ')
+      .map(word => {
+        if (word.toLowerCase() === 'de') return word;
+        return word
+          .split('-')
+          .map(sub => sub.charAt(0).toUpperCase() + sub.slice(1))
+          .join('-');
+      })
+      .join(' ');
+  };
+
+  // Gera as datas disponíveis (próximos 45 dias, pulando segundas-feiras)
+  const generateAvailableDates = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 0; i < 45; i++) {
+      const d = addDays(today, i);
+      const dayOfWeek = getDay(d); // 0 = Domingo, 1 = Segunda, ...
+      if (dayOfWeek !== 1) {
+        dates.push(d);
+      }
+    }
+    return dates;
+  };
+
+  const datesList = generateAvailableDates();
 
   const validateForm = () => {
     let valid = true;
@@ -79,9 +116,9 @@ export default function DunaGastrobarReservation() {
     if (!selectedDate) return [];
     
     const dateObj = parse(selectedDate, 'yyyy-MM-dd', new Date());
-    const dayOfWeek = getDay(dateObj); // 0 = Sunday, 1 = Monday, ...
+    const dayOfWeek = getDay(dateObj); // 0 = Domingo, 1 = Segunda, ...
     
-    // Terça a quinta: 1, 2, 3, 4
+    // Terça a quinta: 2, 3, 4
     if (dayOfWeek >= 2 && dayOfWeek <= 4) {
       return ['12:00', '12:30', '13:00', '13:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
     }
@@ -99,15 +136,12 @@ export default function DunaGastrobarReservation() {
     
     const reservationDateTime = parse(`${selectedDate} ${selectedTime}`, 'yyyy-MM-dd HH:mm', new Date());
     const now = new Date();
-    
-    // Diferença em horas
     const diff = differenceInHours(reservationDateTime, now);
     
     return diff >= 8;
   };
 
   const fetchCapacity = async (selectedDate: string) => {
-    // Conta tudo que NÃO é cancelado (trata nulos como pendentes implicitamente pela lógica do trigger)
     const { data, error } = await supabase
       .from('reservations')
       .select('num_guests, status')
@@ -145,8 +179,7 @@ export default function DunaGastrobarReservation() {
     }
   };
 
-  // Carrega datas lotadas ao iniciar
-  React.useEffect(() => {
+  useEffect(() => {
     fetchFullDates();
   }, []);
 
@@ -191,10 +224,7 @@ export default function DunaGastrobarReservation() {
     }
   };
 
-  const guestOptions = Array.from({ length: 20 }, (_, i) => i + 1);
-
   const resetForm = () => {
-    setActiveStep(1);
     setDate('');
     setGuests(null);
     setTime('');
@@ -209,14 +239,9 @@ export default function DunaGastrobarReservation() {
     setSpecialDateInfo(null);
   };
 
-  const handleNext = (step: number) => {
-    setActiveStep(step + 1);
-  };
-
   const handleSubmit = async () => {
     setIsSubmitting(true);
     
-    // Final pre-submit check to avoid race conditions
     const { data: currentData } = await supabase
       .from('reservations')
       .select('num_guests')
@@ -225,14 +250,13 @@ export default function DunaGastrobarReservation() {
       .not('status', 'ilike', 'cancelado');
     
     const currentTotal = (currentData || []).reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
-    const finalGuests = guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0);
+    const finalGuests = guests || 0;
     
     if (finalGuests && (currentTotal + finalGuests > CAPACITY_LIMIT)) {
       setCapacityError(true);
       setTotalGuestsForDate(currentTotal);
       setIsSubmitting(false);
       alert('Lamentamos, mas a capacidade para este dia acabou de ser atingida. Por favor, escolha outra data.');
-      setActiveStep(1); // Volta para a data
       return;
     }
 
@@ -247,7 +271,7 @@ export default function DunaGastrobarReservation() {
           reservation_time: time,
           num_guests: finalGuests,
           notes: notes,
-          status: 'pending', // Status padrão
+          status: 'pending',
           payment_status: (specialDateInfo?.requires_fee || (finalGuests && finalGuests >= 15)) ? 'pending' : 'not_required',
           payment_amount: specialDateInfo?.requires_fee ? specialDateInfo.fee_amount : ((finalGuests && finalGuests >= 15) ? 100 : 0),
         },
@@ -257,7 +281,6 @@ export default function DunaGastrobarReservation() {
       if (error.message.includes('CAPACITY_EXCEEDED')) {
         setCapacityError(true);
         alert('Capacidade Esgotada: Não foi possível finalizar pois o limite de 80 pessoas foi atingido para este dia.');
-        setActiveStep(1);
       } else {
         alert('Erro ao enviar reserva: ' + error.message);
       }
@@ -277,7 +300,6 @@ export default function DunaGastrobarReservation() {
     setIsSearching(true);
     setHasSearched(true);
     
-    // We use a custom RPC to bypass RLS safely for this specific lookup
     const { data, error } = await supabase
       .rpc('get_customer_reservations', { phone_param: cleanPhone });
     
@@ -318,13 +340,11 @@ export default function DunaGastrobarReservation() {
     
     const oldVal = res.num_guests;
 
-    // Atualiza no banco de dados para 'pendente' com a nova quantidade
     const { error } = await supabase
       .from('reservations')
       .update({ 
         num_guests: newVal, 
         status: 'pending',
-        // Se virou grupo agora, marca que precisa de pagamento
         payment_status: (newVal >= 15 && res.payment_status === 'not_required') ? 'pending' : res.payment_status,
         payment_amount: (newVal >= 15 && res.payment_amount === 0) ? 100 : res.payment_amount
       })
@@ -335,11 +355,9 @@ export default function DunaGastrobarReservation() {
       return;
     }
 
-    // Atualiza a lista local para o cliente ver o status 'Pendente'
     fetchUserReservations();
     
     let paymentNote = "";
-
     if (newVal >= 15 && oldVal < 15) {
       paymentNote = "Baseado nas regras de grupo, essa alteração requer pagamento de taxa.";
     } else if (newVal >= 15 && oldVal >= 15) {
@@ -369,37 +387,8 @@ export default function DunaGastrobarReservation() {
     return value;
   };
 
-  const renderStepHeader = (stepNum: number, Icon: any, title: string, value: string | undefined | null) => {
-    const isActive = activeStep === stepNum;
-    const isCompleted = activeStep > stepNum;
-    
-    return (
-      <div 
-        className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${isActive ? 'bg-[#F5F2ED]' : 'hover:bg-[#F5F2ED]/50'}`}
-        onClick={() => setActiveStep(stepNum)}
-      >
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-full flex items-center justify-center ${isActive ? 'bg-[#4A3728] text-white' : isCompleted ? 'bg-[#EBE3D5] text-[#4A3728]' : 'bg-[#EBE3D5]/50 text-[#4A3728]/50'}`}>
-            <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-          </div>
-          <div>
-            <h3 className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-[#4A3728]' : 'text-[#4A3728]/70'}`}>{title}</h3>
-            {value && !isActive && <p className="text-[10px] text-[#4A3728]/80 mt-0.5 tracking-wide">{value}</p>}
-          </div>
-        </div>
-        <div>
-          {isCompleted && !isActive ? (
-            <CheckCircle2 className="text-[#4A3728]/80" size={18} />
-          ) : (
-            <ChevronDown className={`text-[#4A3728]/50 transition-transform ${isActive ? 'rotate-180' : ''}`} size={18} />
-          )}
-        </div>
-      </div>
-    );
-  };
-
   const getConfirmationText = () => {
-    const finalGuests = guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0);
+    const finalGuests = guests || 0;
     if (finalGuests >= 15 || specialDateInfo?.requires_fee) return "Reservar e Pagar";
     return "Confirmar Reserva";
   };
@@ -414,7 +403,7 @@ export default function DunaGastrobarReservation() {
           <h1 className="text-2xl font-serif font-bold mb-2">Reserva Solicitada!</h1>
           <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Enviamos os detalhes para o nosso WhatsApp para agilizar sua confirmação.</p>
           
-          {((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee) && (
+          {(guests && (guests >= 15 || specialDateInfo?.requires_fee)) && (
             <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[24px] text-left animate-in fade-in zoom-in duration-500">
               <p className="text-xs font-bold text-amber-900 mb-2 uppercase tracking-wider flex items-center gap-2">
                 <AlertCircle size={16} /> {specialDateInfo?.requires_fee ? `Pagamento: ${specialDateInfo.description || 'Data Especial'}` : 'Pagamento de Grupo'}
@@ -446,14 +435,14 @@ export default function DunaGastrobarReservation() {
           )}
 
           <button 
-            onClick={() => handleWhatsAppRedirect('success', guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0))}
+            onClick={() => handleWhatsAppRedirect('success', guests || 0)}
             className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
           >
             <MessageCircle size={18} />
-            { ((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee) ? 'Enviar Comprovante de Pagamento' : 'Confirmar no WhatsApp' }
+            { (guests && (guests >= 15 || specialDateInfo?.requires_fee)) ? 'Enviar Comprovante de Pagamento' : 'Confirmar no WhatsApp' }
           </button>
           <p className="text-center text-[9px] opacity-60 mb-6 px-4">
-            { ((guests === 20 ? (parseInt(customGuestCount) || 20) : (guests || 0)) >= 15 || specialDateInfo?.requires_fee)
+            { (guests && (guests >= 15 || specialDateInfo?.requires_fee))
               ? 'Após realizar o pagamento, clique acima para enviar o comprovante e finalizar sua reserva.' 
               : 'Clique acima para notificar nossa equipe sobre sua reserva.' }
           </p>
@@ -481,12 +470,79 @@ export default function DunaGastrobarReservation() {
     <div className="min-h-screen bg-[#EBE3D5] flex flex-col items-center justify-start py-6 px-4 font-sans text-[#4A3728] overflow-x-hidden">
       <div className="w-full max-w-[420px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden border border-[#D9CFC1] flex flex-col shrink-0">
         
-        {/* Header */}
-        <div className="bg-[#4A3728] text-white p-5 pt-8 text-center">
-          <h1 className="text-xl sm:text-2xl font-serif tracking-[2px] sm:tracking-[4px] uppercase leading-tight">Duna Cozinha & Bar</h1>
+        {/* Banner de Capa */}
+        <div className="h-44 sm:h-52 w-full relative">
+          <img 
+            src="https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&q=80&w=1200" 
+            alt="Duna Gastrobar" 
+            className="w-full h-full object-cover"
+          />
+          {/* Logo sobreposta */}
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2">
+            <div className="w-20 h-20 bg-white rounded-2xl shadow-lg border border-[#D9CFC1] flex items-center justify-center p-2">
+              <img src="/Favicon-D.png" alt="Duna Logo" className="w-16 h-16 object-contain rounded-xl" />
+            </div>
+          </div>
         </div>
 
-        {/* View Mode Toggle */}
+        {/* Informações da Unidade */}
+        <div className="text-center mt-12 mb-2 px-4">
+          <h2 className="text-xl font-serif font-bold text-[#4A3728] uppercase tracking-wider">Duna Cozinha & Bar</h2>
+          <p className="text-[10px] text-[#4A3728]/60 font-bold uppercase tracking-widest mt-1">
+            Reserva • Porto Velho, RO
+          </p>
+        </div>
+
+        {/* Badge de Tolerância */}
+        <div className="flex justify-center mb-6">
+          <span className="bg-amber-100 border border-amber-200 text-amber-900 font-bold text-[9px] px-3 py-1.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+            ⏰ TOLERÂNCIA 20MIN - CARDÁPIO À LA CARTE
+          </span>
+        </div>
+
+        {/* Benefícios */}
+        {viewMode === 'reserve' && (
+          <div className="grid grid-cols-3 gap-2 px-4 mb-6">
+            <div className="bg-white p-3 rounded-2xl border border-[#D9CFC1] shadow-sm text-center flex flex-col items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
+                <CheckCircle2 size={14} />
+              </div>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Reserva Grátis</span>
+              <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">Sem taxa</span>
+            </div>
+            <div className="bg-white p-3 rounded-2xl border border-[#D9CFC1] shadow-sm text-center flex flex-col items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
+                <AlertCircle size={14} />
+              </div>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Tempo Real</span>
+              <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">Mesas ao vivo</span>
+            </div>
+            <div className="bg-white p-3 rounded-2xl border border-[#D9CFC1] shadow-sm text-center flex flex-col items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
+                <MessageCircle size={14} />
+              </div>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Confirmação</span>
+              <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">No WhatsApp</span>
+            </div>
+          </div>
+        )}
+
+        {/* Endereço */}
+        {viewMode === 'reserve' && (
+          <div className="mx-4 mb-6 p-4 bg-white rounded-2xl border border-[#D9CFC1] shadow-sm flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center shrink-0 mt-0.5">
+              <MapPin size={16} />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-xs font-bold text-[#4A3728] uppercase tracking-wide">Duna Gastrobar</h4>
+              <p className="text-[10px] text-[#4A3728]/70 leading-normal mt-0.5">
+                Av. Pinheiro Machado, 1356 - São Cristóvão, Porto Velho - RO, 76820-838
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Alternador de Modos (Abas) */}
         <div className="flex p-1 bg-[#EBE3D5]/30 border-b border-[#D9CFC1]">
           <button 
             onClick={() => setViewMode('reserve')}
@@ -512,331 +568,377 @@ export default function DunaGastrobarReservation() {
           </button>
         </div>
 
-        {/* Main Content Area */}
+        {/* Área de Conteúdo */}
         <div className="flex-1 overflow-y-auto">
           {viewMode === 'reserve' ? (
-            <div className="divide-y divide-[#D9CFC1]">
-              {/* Step 1: Date */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(1, Calendar, "Qual a data?", date ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : '')}
-                {activeStep === 1 && (
-                  <div className="p-4 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <CalendarPicker 
-                      selectedDate={date} 
-                      disabledDates={fullyBookedDates}
-                      onDateSelect={(newDate) => {
-                        setDate(newDate);
-                        fetchCapacity(newDate);
-                        fetchSpecialDate(newDate);
-                        handleNext(1);
-                      }} 
-                    />
-                  </div>
-                )}
-              </div>
+            <div className="p-4">
+              <div className="bg-white border border-[#D9CFC1] rounded-[28px] shadow-sm flex flex-col">
+                
+                {/* Banner de tolerância do form */}
+                <div className="bg-amber-50 p-4 border-b border-[#D9CFC1] text-[#4A3728] rounded-t-[28px]">
+                  <p className="text-[10px] font-semibold text-amber-900 leading-relaxed text-center uppercase tracking-wider">
+                    ⚠️ Tolerância de 20min. Cardápio à la carte (sem rodízio).
+                  </p>
+                </div>
 
-              {/* Step 2: Guests */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(2, Users, "Quantas pessoas?", guests ? `${guests} pessoa${guests > 1 ? 's' : ''}` : '')}
-                {activeStep === 2 && (
-                  <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                    {capacityError && (
-                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-                        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                        <p className="text-[11px] leading-relaxed text-red-800">
-                          <strong>Capacidade Esgotada:</strong> Infelizmente já atingimos o limite de 80 pessoas para este dia no sistema. Tente outra data ou fale conosco no WhatsApp.
+                {/* CAMPO 1: DATA */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setIsDataOpen(!isDataOpen);
+                      setIsPessoasOpen(false);
+                      setIsHorarioOpen(false);
+                    }}
+                    className={`w-full p-4 flex items-center justify-between text-left hover:bg-[#F5F2ED]/40 transition-colors ${
+                      isDataOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-[#4A3728]/70">
+                        <Calendar size={18} />
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Data</p>
+                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
+                          {date ? formatDisplayDate(parse(date, 'yyyy-MM-dd', new Date())) : 'Selecione o dia'}
                         </p>
                       </div>
-                    )}
-                    
-                    <div className="grid grid-cols-5 gap-2 mb-4">
-                      {guestOptions.map((num) => (
+                    </div>
+                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isDataOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isDataOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsDataOpen(false)} />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-[#F5F2ED] mx-2">
+                        {datesList.map((dObj) => {
+                          const dateValue = format(dObj, 'yyyy-MM-dd');
+                          const isFull = fullyBookedDates.includes(dateValue);
+                          const displayLabel = formatDisplayDate(dObj);
+                          
+                          return (
+                            <button
+                              key={dateValue}
+                              disabled={isFull}
+                              onClick={() => {
+                                setDate(dateValue);
+                                fetchCapacity(dateValue);
+                                fetchSpecialDate(dateValue);
+                                setIsDataOpen(false);
+                                setGuests(null);
+                                setTime('');
+                              }}
+                              className={`w-full text-left px-5 py-3 hover:bg-[#F5F2ED] transition-colors flex items-center justify-between text-xs font-medium ${
+                                date === dateValue ? 'bg-[#F5F2ED] font-bold text-[#4A3728]' : 'text-[#4A3728]/80'
+                              } ${isFull ? 'opacity-30 cursor-not-allowed' : ''}`}
+                            >
+                              <span>{displayLabel}</span>
+                              {isFull && <span className="text-[9px] font-bold text-red-600 uppercase">Lotado</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* CAMPO 2: PESSOAS */}
+                <div className="relative border-t border-[#D9CFC1]">
+                  <button
+                    disabled={!date}
+                    onClick={() => {
+                      setIsPessoasOpen(!isPessoasOpen);
+                      setIsDataOpen(false);
+                      setIsHorarioOpen(false);
+                    }}
+                    className={`w-full p-4 flex items-center justify-between text-left transition-colors disabled:opacity-40 ${
+                      !date ? 'cursor-not-allowed bg-stone-50' : 'hover:bg-[#F5F2ED]/40'
+                    } ${isPessoasOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-[#4A3728]/70">
+                        <Users size={18} />
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pessoas</p>
+                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
+                          {guests ? `${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : 'Selecione'}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isPessoasOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isPessoasOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsPessoasOpen(false)} />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 mx-2 flex flex-col max-h-72 overflow-y-auto custom-scrollbar">
+                        <div className="grid grid-cols-5 gap-2 p-4 shrink-0">
+                          {Array.from({ length: 30 }, (_, i) => i + 1).map((num) => {
+                            const isOverflow = (totalGuestsForDate + num) > CAPACITY_LIMIT;
+                            return (
+                              <button
+                                key={num}
+                                disabled={isOverflow}
+                                onClick={() => {
+                                  setGuests(num);
+                                  setCustomGuestCount('');
+                                  setIsPessoasOpen(false);
+                                  setTime('');
+                                }}
+                                className={`py-2 rounded-lg text-xs font-bold border transition-all ${
+                                  guests === num
+                                    ? 'border-[#4A3728] bg-[#4A3728] text-white'
+                                    : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED] disabled:opacity-20 disabled:cursor-not-allowed'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        
                         <button
-                          key={num}
-                          disabled={capacityError && guests !== num}
                           onClick={() => {
-                            setGuests(num);
-                            if (num < 20) setCustomGuestCount('');
+                            handleWhatsAppRedirect('capacity_overflow', 30);
+                            setIsPessoasOpen(false);
                           }}
-                          className={`py-2 rounded-lg text-xs font-medium border transition-all ${
-                            guests === num
-                              ? 'border-[#4A3728] bg-[#4A3728] text-white'
-                              : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED] disabled:opacity-20 disabled:cursor-not-allowed'
-                          }`}
+                          className="m-4 mt-0 p-3 border border-dashed border-[#25D366]/40 rounded-xl flex items-center justify-between text-[10px] font-bold text-[#128C7E] bg-[#25D366]/5 hover:bg-[#25D366]/10 transition-all text-left"
                         >
-                          {num === 20 ? '20+' : num}
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">💬</span>
+                            <span>Mais de 30 pessoas? Fale com o Duna</span>
+                          </div>
+                          <span className="text-[8px] uppercase tracking-widest text-[#128C7E]">WhatsApp →</span>
                         </button>
-                      ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* CAMPO 3: HORÁRIO */}
+                <div className="relative border-t border-[#D9CFC1]">
+                  <button
+                    disabled={!date || !guests}
+                    onClick={() => {
+                      setIsHorarioOpen(!isHorarioOpen);
+                      setIsDataOpen(false);
+                      setIsPessoasOpen(false);
+                    }}
+                    className={`w-full p-4 flex items-center justify-between text-left transition-colors disabled:opacity-40 ${
+                      (!date || !guests) ? 'cursor-not-allowed bg-stone-50' : 'hover:bg-[#F5F2ED]/40'
+                    } ${isHorarioOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-[#4A3728]/70">
+                        <Clock size={18} />
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Horário</p>
+                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
+                          {(!date || !guests) ? 'Escolha data e pessoas primeiro' : (time ? time : 'Selecione')}
+                        </p>
+                      </div>
                     </div>
-
-                    {guests === 20 && (
-                      <div className="mb-4 animate-in fade-in slide-in-from-top-1 duration-300">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 ml-1 mb-1 block">Quantidade Exata</label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min="20"
-                          value={customGuestCount}
-                          onChange={(e) => setCustomGuestCount(e.target.value)}
-                          placeholder="Ex: 25"
-                          className="w-full px-4 py-3 bg-white border border-[#D9CFC1] rounded-xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none placeholder:text-[#4A3728]/50 text-[#4A3728]"
-                        />
+                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isHorarioOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isHorarioOpen && date && guests && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsHorarioOpen(false)} />
+                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 mx-2 p-4 grid grid-cols-3 gap-2">
+                        {getAvailableTimes(date).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => {
+                              setTime(t);
+                              setIsHorarioOpen(false);
+                            }}
+                            className={`py-2.5 rounded-lg border text-xs font-bold transition-all ${
+                              time === t
+                                ? 'border-[#4A3728] bg-[#4A3728] text-white'
+                                : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED]'
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
                       </div>
-                    )}
+                    </>
+                  )}
+                </div>
 
-                    {guests && (totalGuestsForDate + (guests === 20 ? (parseInt(customGuestCount) || 20) : guests) > CAPACITY_LIMIT) && (
-                      <div className="mt-3 mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                          <p className="text-[11px] leading-relaxed text-red-800 font-medium">
-                            A capacidade para este dia foi atingida. Por favor, fale conosco no WhatsApp para verificar disponibilidades extras ou eventos privados.
-                          </p>
-                        </div>
-                        <button 
-                          onClick={() => handleWhatsAppRedirect('capacity_overflow', guests === 20 ? (parseInt(customGuestCount) || 20) : guests)}
-                          className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                        >
-                          <MessageCircle size={14} />
-                          Falar com o Duna no WhatsApp
-                        </button>
-                      </div>
-                    )}
-
-                    {guests && (guests >= 15 || specialDateInfo?.requires_fee) && (
-                      <div className="mt-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2 animate-in fade-in zoom-in duration-300">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                          <p className="text-[11px] leading-relaxed text-amber-800">
-                            {specialDateInfo?.requires_fee 
-                              ? <span><strong>{specialDateInfo.description || 'Data Especial'}:</strong> Requer pagamento de taxa de reserva de R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')} (100% consumível).</span>
-                              : <span><strong>Reserva de Grupo:</strong> Acima de 15 pessoas requer pagamento de taxa de R$ 100,00 (100% consumível).</span>
-                            }
-                          </p>
-                        </div>
-                        <div className="pl-8 text-[9px] text-red-700 font-medium leading-tight">
-                          *Tolerância de 20 min. O valor não é reembolsável em caso de atraso ou cancelamento.
-                        </div>
-                      </div>
-                    )}
-
+                {/* Avisos de Antecedência e Capacidade */}
+                {time && !checkLeadTime(date, time) && (
+                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex flex-col gap-3 animate-in fade-in duration-300">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
+                        Reservas para hoje com menos de 8 horas de antecedência devem ser feitas diretamente via WhatsApp.
+                      </p>
+                    </div>
                     <button 
-                      disabled={!guests || (totalGuestsForDate + (guests === 20 ? (parseInt(customGuestCount) || 20) : guests) > CAPACITY_LIMIT)}
-                      onClick={() => handleNext(2)}
-                      className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#3d2d21] transition-colors"
+                      onClick={() => handleWhatsAppRedirect('lead_time')}
+                      className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
                     >
-                      Continuar
+                      <MessageCircle size={14} />
+                      Solicitar via WhatsApp
                     </button>
                   </div>
                 )}
-              </div>
 
-              {/* Step 3: Time */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(3, Clock, "Qual o horário?", time)}
-                {activeStep === 3 && (
-                  <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="grid grid-cols-2 gap-3 mb-6">
-                      {getAvailableTimes(date).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setTime(t)}
-                          className={`py-3 rounded-xl border text-sm font-medium transition-all ${
-                            time === t
-                              ? 'border-[#4A3728] bg-[#4A3728] text-white'
-                              : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED]'
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
+                {guests && (totalGuestsForDate + guests > CAPACITY_LIMIT) && (
+                  <div className="p-4 bg-red-50 border-t border-[#D9CFC1] flex flex-col gap-3 animate-in fade-in duration-300">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed text-red-800 font-medium">
+                        A capacidade para este dia foi atingida no sistema. Fale conosco no WhatsApp para verificar disponibilidades extras.
+                      </p>
                     </div>
-
-                    {!checkLeadTime(date, time) && time && (
-                      <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col gap-3 animate-in fade-in zoom-in duration-300">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                          <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
-                            Reservas para hoje com menos de 8 horas de antecedência devem ser feitas diretamente via WhatsApp.
-                          </p>
-                        </div>
-                        <button 
-                          onClick={() => handleWhatsAppRedirect('lead_time')}
-                          className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                        >
-                          <MessageCircle size={14} />
-                          Solicitar via WhatsApp
-                        </button>
-                      </div>
-                    )}
-
                     <button 
-                      disabled={!time || !checkLeadTime(date, time)}
-                      onClick={() => handleNext(3)}
-                      className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#3d2d21] transition-colors"
+                      onClick={() => handleWhatsAppRedirect('capacity_overflow')}
+                      className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
                     >
-                      Continuar
+                      <MessageCircle size={14} />
+                      Falar no WhatsApp
                     </button>
                   </div>
                 )}
-              </div>
 
-              {/* Step 4: Notes */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(4, MessageSquare, "Alguma observação?", notes ? 'Adicionada' : 'Nenhuma')}
-                {activeStep === 4 && (
-                  <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                {/* Aviso sobre Eventos Especiais ou Taxas de Grupo */}
+                {guests && (guests >= 15 || specialDateInfo?.requires_fee) && (
+                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex flex-col gap-2 animate-in fade-in duration-300">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
+                        {specialDateInfo?.requires_fee 
+                          ? <span><strong>{specialDateInfo.description || 'Data Especial'}:</strong> Requer pagamento de taxa de reserva de R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')} (100% revertido em consumação).</span>
+                          : <span><strong>Reserva de Grupo:</strong> Acima de 15 pessoas requer pagamento de taxa de R$ 100,00 (100% revertido em consumação).</span>
+                        }
+                      </p>
+                    </div>
+                    <p className="text-[9px] text-red-700 font-bold leading-tight pl-8">
+                      *Tolerância de 20 min. O valor não é reembolsável em caso de atraso ou cancelamento.
+                    </p>
+                  </div>
+                )}
+
+                {/* CAMPO 4: ALGUMA OBSERVAÇÃO? (OPCIONAL) */}
+                {date && guests && time && checkLeadTime(date, time) && (
+                  <div className="p-4 border-t border-[#D9CFC1]">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/60 mb-2">
+                      Alguma Observação? (Opcional)
+                    </label>
                     <textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Ex: Aniversário, cadeira de rodas, alguma alergia grave..."
-                      className="w-full px-4 py-3 bg-white border border-[#D9CFC1] rounded-xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none resize-none h-24 mb-4 placeholder:text-[#4A3728]/50 text-[#4A3728]"
-                    ></textarea>
-                    <button 
-                      onClick={() => handleNext(4)}
-                      className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#3d2d21] transition-colors"
-                    >
-                      Continuar
-                    </button>
+                      placeholder="Ex.: Aniversário, alergia, cadeirinha de bebê..."
+                      className="w-full px-4 py-3 bg-[#FDFBF7] border border-[#D9CFC1] rounded-xl text-sm focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none resize-none h-20 placeholder:text-[#4A3728]/45 text-[#4A3728]"
+                    />
                   </div>
                 )}
-              </div>
 
-              {/* Step 5: User Data */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(5, User, "Seus dados", formData.name)}
-                {activeStep === 5 && (
-                  <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="space-y-3 mb-6">
-                      <div>
-                        <input
-                          type="text"
-                          className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
-                            formErrors.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
-                          }`}
-                          value={formData.name}
-                          onChange={(e) => {
-                            setFormData({...formData, name: e.target.value});
-                            if (formErrors.name) setFormErrors({...formErrors, name: ''});
-                          }}
-                          placeholder="Nome completo"
-                        />
-                        {formErrors.name && <p className="text-red-500 text-[10px] mt-1 ml-1">{formErrors.name}</p>}
-                      </div>
-                      <div>
-                        <input
-                          type="email"
-                          className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
-                            formErrors.email ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
-                          }`}
-                          value={formData.email}
-                          onChange={(e) => {
-                            setFormData({...formData, email: e.target.value});
-                            if (formErrors.email) setFormErrors({...formErrors, email: ''});
-                          }}
-                          placeholder="E-mail: joao@email.com"
-                        />
-                        {formErrors.email && <p className="text-red-500 text-[10px] mt-1 ml-1">{formErrors.email}</p>}
-                      </div>
-                      <div>
-                        <input
-                          type="tel"
-                          inputMode="tel"
-                          className={`w-full px-4 py-3 bg-white border rounded-xl text-base focus:ring-1 outline-none placeholder:text-[#4A3728]/50 text-[#4A3728] ${
-                            formErrors.whatsapp ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728] focus:border-[#4A3728]'
-                          }`}
-                          value={formData.whatsapp}
-                          onChange={(e) => {
-                            setFormData({...formData, whatsapp: e.target.value});
-                            if (formErrors.whatsapp) setFormErrors({...formErrors, whatsapp: ''});
-                          }}
-                          placeholder="WhatsApp: (11) 99999-9999"
-                        />
-                        {formErrors.whatsapp && <p className="text-red-500 text-[10px] mt-1 ml-1">{formErrors.whatsapp}</p>}
-                      </div>
+                {/* DADOS DO CLIENTE */}
+                {date && guests && time && checkLeadTime(date, time) && (totalGuestsForDate + guests <= CAPACITY_LIMIT) && (
+                  <div className="p-4 border-t border-[#D9CFC1] bg-stone-50/50 space-y-3 animate-in fade-in duration-500">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">
+                      Seus Dados
+                    </p>
+                    <div>
+                      <input
+                        type="text"
+                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
+                          formErrors.name ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
+                        }`}
+                        value={formData.name}
+                        onChange={(e) => {
+                          setFormData({...formData, name: e.target.value});
+                          if (formErrors.name) setFormErrors({...formErrors, name: ''});
+                        }}
+                        placeholder="Nome completo"
+                      />
+                      {formErrors.name && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.name}</p>}
                     </div>
-                    <button 
-                      onClick={() => {
-                        if (validateForm()) {
-                          handleNext(5);
-                        }
-                      }}
-                      className="w-full bg-[#4A3728] text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider hover:bg-[#3d2d21] transition-colors"
-                    >
-                      Ver Resumo
-                    </button>
+                    <div>
+                      <input
+                        type="email"
+                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
+                          formErrors.email ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
+                        }`}
+                        value={formData.email}
+                        onChange={(e) => {
+                          setFormData({...formData, email: e.target.value});
+                          if (formErrors.email) setFormErrors({...formErrors, email: ''});
+                        }}
+                        placeholder="E-mail: joao@email.com"
+                      />
+                      {formErrors.email && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.email}</p>}
+                    </div>
+                    <div>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
+                          formErrors.whatsapp ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
+                        }`}
+                        value={formData.whatsapp}
+                        onChange={(e) => {
+                          setFormData({...formData, whatsapp: formatPhoneNumber(e.target.value)});
+                          if (formErrors.whatsapp) setFormErrors({...formErrors, whatsapp: ''});
+                        }}
+                        placeholder="WhatsApp: (69) 99999-9999"
+                      />
+                      {formErrors.whatsapp && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.whatsapp}</p>}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Step 6: Summary & Policy Acceptance */}
-              <div className="bg-[#FDFBF7]">
-                {renderStepHeader(6, CheckCircle2, "Confirmar e Finalizar", activeStep === 6 ? "Revisão Final" : "")}
-                {activeStep === 6 && (
-                  <div className="p-5 pt-0 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="bg-white p-5 rounded-2xl border border-[#D9CFC1] shadow-sm mb-6 space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#4A3728]/60 font-bold uppercase tracking-widest">Data</span>
-                        <span className="font-bold">{date ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : ''}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#4A3728]/60 font-bold uppercase tracking-widest">Horário</span>
-                        <span className="font-bold">{time}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-[#4A3728]/60 font-bold uppercase tracking-widest">Pessoas</span>
-                        <span className="font-bold">{guests === 20 ? customGuestCount : guests} convidados</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs border-t border-[#F5F2ED] pt-3">
-                        <span className="text-[#4A3728]/60 font-bold uppercase tracking-widest">Nome</span>
-                        <span className="font-bold truncate max-w-[150px]">{formData.name}</span>
-                      </div>
-                      
-                      <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-100">
-                        <div className="flex items-center gap-2 text-red-800 font-bold uppercase tracking-[1px] text-[9px] mb-1">
-                          <Clock size={12} />
-                          <span>Política de Atraso: 20 Minutos</span>
-                        </div>
-                        <p className="text-[9px] text-red-700 leading-tight">
-                          Após 20 minutos de atraso, a reserva é cancelada automaticamente. Para grupos (15+), o valor da taxa não é reembolsável.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mb-6 p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3">
-                      <div className="relative flex items-center h-5">
-                        <input
-                          id="terms-check"
-                          type="checkbox"
-                          checked={policyAccepted}
-                          onChange={(e) => setPolicyAccepted(e.target.checked)}
-                          className="w-5 h-5 rounded-md border-amber-300 text-[#4A3728] focus:ring-[#4A3728] cursor-pointer"
-                        />
-                      </div>
-                      <label htmlFor="terms-check" className="text-[11px] leading-relaxed text-amber-900 cursor-pointer font-medium">
-                        Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong> e que a taxa de reserva {specialDateInfo?.requires_fee ? 'desta data especial' : 'de grupo'} <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento.
-                      </label>
-                    </div>
-
-                    <button 
-                      disabled={!policyAccepted || isSubmitting}
-                      onClick={handleSubmit}
-                      className={`w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-xl transition-all flex items-center justify-center gap-2 ${
-                        policyAccepted ? 'bg-[#4A3728] hover:bg-[#3d2d21] active:scale-[0.98]' : 'bg-stone-300 cursor-not-allowed shadow-none'
-                      }`}
-                    >
-                      {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : getConfirmationText()}
-                      {!isSubmitting && <ChevronDown className="-rotate-90" size={16} />}
-                    </button>
+                {/* POLÍTICA DE ATRASO / CONCORDÂNCIA */}
+                {date && guests && time && formData.name && formData.email && formData.whatsapp && (
+                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex items-start gap-3 animate-in fade-in duration-300">
+                    <input
+                      id="terms-check"
+                      type="checkbox"
+                      checked={policyAccepted}
+                      onChange={(e) => setPolicyAccepted(e.target.checked)}
+                      className="w-5 h-5 rounded-md border-amber-300 text-[#4A3728] focus:ring-[#4A3728] cursor-pointer mt-0.5"
+                    />
+                    <label htmlFor="terms-check" className="text-[11px] leading-normal text-amber-900 cursor-pointer font-medium">
+                      Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong> e que a taxa de reserva {specialDateInfo?.requires_fee ? 'desta data especial' : 'de grupo'} <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento.
+                    </label>
                   </div>
                 )}
+
+                {/* BOTÃO DE CONFIRMAÇÃO */}
+                <div className="p-4 border-t border-[#D9CFC1] bg-white rounded-b-[28px]">
+                  <button
+                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || !policyAccepted || isSubmitting}
+                    onClick={async () => {
+                      if (validateForm()) {
+                        await handleSubmit();
+                      }
+                    }}
+                    className={`w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
+                      policyAccepted && date && guests && time && formData.name && formData.whatsapp
+                      ? 'bg-[#4A3728] hover:bg-[#3d2d21] active:scale-[0.98]'
+                      : 'bg-stone-300 cursor-not-allowed shadow-none text-stone-500'
+                    }`}
+                  >
+                    {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : getConfirmationText()}
+                  </button>
+                </div>
+
               </div>
+              <p className="text-center text-[9px] opacity-60 mt-3">
+                Disponibilidade em tempo real • Confirmação no WhatsApp
+              </p>
             </div>
           ) : (
-            /* Minhas Reservas View */
+            /* VISUALIZAÇÃO: MINHAS RESERVAS */
             <div className="p-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="mb-8">
-                <h2 className="text-lg font-serif font-bold mb-2">Consultar Reservas</h2>
-                <p className="text-[11px] opacity-60 leading-relaxed uppercase tracking-widest">
+                <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Consultar Reservas</h2>
+                <p className="text-[11px] opacity-60 leading-relaxed uppercase tracking-widest text-[#4A3728]">
                   Informe seu WhatsApp para acompanhar o status da sua reserva.
                 </p>
               </div>
@@ -846,7 +948,7 @@ export default function DunaGastrobarReservation() {
                   <input
                     type="tel"
                     inputMode="tel"
-                    placeholder="(69) 9 9999-9999"
+                    placeholder="(69) 99999-9999"
                     value={searchPhone}
                     onChange={(e) => setSearchPhone(formatPhoneNumber(e.target.value))}
                     className="w-full px-5 py-4 bg-white border border-[#D9CFC1] rounded-2xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none shadow-sm transition-all"
@@ -941,7 +1043,7 @@ export default function DunaGastrobarReservation() {
                                   value={newQuantityValue}
                                   onChange={(e) => setNewQuantityValue(e.target.value)}
                                   placeholder="Ex: 12"
-                                  className="flex-1 px-4 py-2.5 bg-[#F5F2ED] border-none rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-[#4A3728]"
+                                  className="flex-1 px-4 py-2.5 bg-[#F5F2ED] border-none rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-[#4A3728] text-[#4A3728]"
                                 />
                                 <button 
                                   onClick={() => handleChangeQuantity(res)}
@@ -991,11 +1093,9 @@ export default function DunaGastrobarReservation() {
           )}
         </div>
 
-        {/* Removido Footer antigo pois agora temos o Passo 6 */}
-
       </div>
 
-      {/* Payment Modal for Quantity Change */}
+      {/* MODAL DE PAGAMENTO (Para Alteração de Quantidade) */}
       {showPaymentInfo && paymentModalData && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#4A3728]/60 backdrop-blur-sm" onClick={() => setShowPaymentInfo(false)} />
@@ -1076,7 +1176,7 @@ export default function DunaGastrobarReservation() {
         </div>
       )}
 
-      {/* Cancel Confirmation Modal */}
+      {/* MODAL DE CANCELAMENTO */}
       {showCancelModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#4A3728]/60 backdrop-blur-sm" onClick={() => setShowCancelModal(false)} />
@@ -1110,7 +1210,7 @@ export default function DunaGastrobarReservation() {
         </div>
       )}
 
-      {/* Footer Info */}
+      {/* links de rodapé adicionais */}
       <div className="mt-12 w-full max-w-[400px] flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
         <a 
           href="https://chat.whatsapp.com/DGOBrxpcniEG8WSOTn0J6i?mode=gi_t" 

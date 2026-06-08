@@ -9,8 +9,6 @@ export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Se as variáveis estiverem ausentes, retornamos o response original
-  // para evitar que o middleware trave (Erro 500).
   if (!supabaseUrl || !supabaseKey) {
     return supabaseResponse;
   }
@@ -40,18 +38,53 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-  const isAdminPage = request.nextUrl.pathname.startsWith('/admin')
-
-  if (isAdminPage && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+  let userRole: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (profile) {
+      userRole = profile.role
+    }
   }
 
+  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
+  const isAdminPage = request.nextUrl.pathname.startsWith('/admin')
+  const isEmployeePage = request.nextUrl.pathname.startsWith('/funcionario')
+
+  // Redireciona admins ou bloqueia acesso de quem não está logado na área admin
+  if (isAdminPage) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    } else if (userRole === 'employee') {
+      // Funcionários não podem acessar a aba admin, vão pro checklist
+      const url = request.nextUrl.clone()
+      url.pathname = '/funcionario/checklist'
+      return NextResponse.redirect(url)
+    }
+  }
+
+  // Redireciona para login se tentar acessar /funcionario deslogado
+  if (isEmployeePage) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+  }
+
+  // Ao acessar /login, se já logado, redireciona para a página correta
   if (isLoginPage && user) {
     const url = request.nextUrl.clone()
-    url.pathname = '/admin'
+    if (userRole === 'employee') {
+      url.pathname = '/funcionario/checklist'
+    } else {
+      url.pathname = '/admin'
+    }
     return NextResponse.redirect(url)
   }
 
