@@ -249,75 +249,74 @@ export default function FuncionariosManager() {
           </button>
         </div>
 
-        <table className="w-full text-left text-sm border-collapse">
-          <thead className="bg-[#F5F2ED] text-[#4A3728]">
-            <tr>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Nome / E-mail</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Nível de Acesso</th>
-              <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">Cargo Operacional</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#D9CFC1]/40">
-            {profiles.map(profile => (
-              <tr key={profile.id} className="hover:bg-[#FDFBF7] transition-colors">
-                <td className="px-6 py-4">
-                  {editingProfileId === profile.id ? (
-                    <div className="flex items-center gap-2 mb-1">
-                      <input 
-                        type="text" 
-                        value={editProfileName}
-                        onChange={e => setEditProfileName(e.target.value)}
-                        className="bg-white border border-[#4A3728] rounded-md px-2 py-1 text-sm font-bold text-[#4A3728] outline-none"
-                        autoFocus
-                      />
-                      <button onClick={() => handleSaveProfileName(profile.id)} className="text-green-600 hover:text-green-800"><Save size={16} /></button>
-                      <button onClick={() => setEditingProfileId(null)} className="text-red-600 hover:text-red-800"><X size={16} /></button>
-                    </div>
-                  ) : (
-                    <div className="font-bold text-sm flex items-center gap-2 group">
-                      {profile.full_name || 'Usuário Sem Nome'}
-                      <button 
-                        onClick={() => { setEditingProfileId(profile.id); setEditProfileName(profile.full_name || ''); }} 
-                        className="opacity-0 group-hover:opacity-100 text-[#4A3728]/50 hover:text-[#4A3728] transition-opacity"
-                        title="Editar nome"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    </div>
-                  )}
-                  <div className="text-[11px] text-[#4A3728]/50 mt-1">{profile.email || 'Sem e-mail'}</div>
-                </td>
-                <td className="px-6 py-4">
+        <div className="divide-y divide-[#D9CFC1]/40">
+          {profiles.map(profile => (
+            <div key={profile.id} className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-[#FDFBF7] transition-colors">
+              <div className="flex-1 w-full md:w-auto">
+                {editingProfileId === profile.id ? (
+                  <div className="flex items-center gap-2 mb-1">
+                    <input 
+                      type="text" 
+                      value={editProfileName}
+                      onChange={e => setEditProfileName(e.target.value)}
+                      className="bg-white border border-[#4A3728] rounded-md px-2 py-1 text-sm font-bold text-[#4A3728] outline-none flex-1"
+                      autoFocus
+                    />
+                    <button onClick={() => handleSaveProfileName(profile.id)} className="text-green-600 hover:text-green-800"><Save size={16} /></button>
+                    <button onClick={() => setEditingProfileId(null)} className="text-red-600 hover:text-red-800"><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="font-bold text-sm flex items-center gap-2 group">
+                    {profile.full_name || 'Usuário Sem Nome'}
+                    <button 
+                      onClick={() => { setEditingProfileId(profile.id); setEditProfileName(profile.full_name || ''); }} 
+                      className="md:opacity-0 group-hover:opacity-100 text-[#4A3728]/50 hover:text-[#4A3728] transition-opacity"
+                      title="Editar nome"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  </div>
+                )}
+                <div className="text-[11px] text-[#4A3728]/50 mt-1">{profile.email || 'Sem e-mail'}</div>
+              </div>
+              
+              <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+                <div className="w-full md:w-auto">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60 md:hidden mb-1 block">Nível de Acesso</label>
                   <select
                     value={profile.role || ''}
                     onChange={(e) => handleUpdateProfile(profile.id, { role: e.target.value || null })}
                     disabled={updating === profile.id}
-                    className="bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
+                    className="w-full md:w-40 bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
                   >
                     <option value="">(Sem acesso)</option>
                     <option value="admin">Administrador</option>
                     <option value="receptionist">Recepcionista</option>
-                    <option value="employee">Funcionário Operacional</option>
+                    <option value="employee">Funcionário</option>
                   </select>
-                </td>
-                <td className="px-6 py-4">
-                  <select
-                    value={profile.job_role_id || ''}
-                    onChange={(e) => handleUpdateProfile(profile.id, { job_role_id: e.target.value || null })}
-                    disabled={updating === profile.id || profile.role !== 'employee'}
-                    className="bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
-                  >
-                    <option value="">(Nenhum cargo)</option>
-                    {roles.map(r => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
-                  </select>
-                  {updating === profile.id && <Loader2 size={14} className="inline-block ml-2 animate-spin text-[#4A3728]/50" />}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+
+                <div className="w-full md:w-auto flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60 md:hidden mb-1 block">Cargo Operacional</label>
+                    <select
+                      value={profile.job_role_id || ''}
+                      onChange={(e) => handleUpdateProfile(profile.id, { job_role_id: e.target.value || null })}
+                      disabled={updating === profile.id || profile.role !== 'employee'}
+                      className="w-full md:w-40 bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
+                    >
+                      <option value="">(Nenhum cargo)</option>
+                      {roles.map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {updating === profile.id && <Loader2 size={14} className="animate-spin text-[#4A3728]/50 mt-4 md:mt-0" />}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
         {profiles.length === 0 && (
           <div className="p-6 text-center text-[#4A3728]/50 text-sm">Nenhum perfil encontrado.</div>
         )}
