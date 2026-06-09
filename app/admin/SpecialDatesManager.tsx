@@ -9,6 +9,7 @@ type SpecialDate = {
   requires_fee: boolean;
   fee_amount: number;
   description: string;
+  included_guests?: number | null;
 };
 
 export default function SpecialDatesManager() {
@@ -20,12 +21,14 @@ export default function SpecialDatesManager() {
   const [requiresFee, setRequiresFee] = useState(true);
   const [feeAmount, setFeeAmount] = useState('100');
   const [description, setDescription] = useState('');
+  const [includedGuests, setIncludedGuests] = useState('');
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState('');
   const [editRequiresFee, setEditRequiresFee] = useState(true);
   const [editFeeAmount, setEditFeeAmount] = useState('100');
   const [editDescription, setEditDescription] = useState('');
+  const [editIncludedGuests, setEditIncludedGuests] = useState('');
   
   const supabase = createClient();
 
@@ -58,7 +61,8 @@ export default function SpecialDatesManager() {
           date: newDate,
           requires_fee: requiresFee,
           fee_amount: requiresFee ? parseFloat(feeAmount) : 0,
-          description: description
+          description: description,
+          included_guests: includedGuests ? parseInt(includedGuests) : null
         }
       ]);
 
@@ -67,6 +71,7 @@ export default function SpecialDatesManager() {
     } else {
       setNewDate('');
       setDescription('');
+      setIncludedGuests('');
       setFeeAmount('100');
       setRequiresFee(true);
       fetchDates();
@@ -95,6 +100,7 @@ export default function SpecialDatesManager() {
     setEditRequiresFee(d.requires_fee);
     setEditFeeAmount(d.fee_amount.toString());
     setEditDescription(d.description || '');
+    setEditIncludedGuests(d.included_guests ? d.included_guests.toString() : '');
   };
 
   const handleSaveEdit = async () => {
@@ -107,7 +113,8 @@ export default function SpecialDatesManager() {
         date: editDate,
         requires_fee: editRequiresFee,
         fee_amount: editRequiresFee ? parseFloat(editFeeAmount) : 0,
-        description: editDescription
+        description: editDescription,
+        included_guests: editIncludedGuests ? parseInt(editIncludedGuests) : null
       })
       .eq('id', editingId);
 
@@ -159,6 +166,17 @@ export default function SpecialDatesManager() {
                 onChange={e => setDescription(e.target.value)}
                 className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                 placeholder="Opcional"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Pessoas Incluídas (Ex: 4 para mesas fechadas)</label>
+              <input 
+                type="number" 
+                value={includedGuests} 
+                onChange={e => setIncludedGuests(e.target.value)}
+                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
+                placeholder="Deixe em branco para livre escolha"
               />
             </div>
 
@@ -222,6 +240,7 @@ export default function SpecialDatesManager() {
                         </div>
                         <div className="text-[#4A3728]/80 text-sm font-medium">
                           {d.description || '-'}
+                          {d.included_guests ? ` • ${d.included_guests} pessoas` : ''}
                         </div>
                         <div className="mt-1">
                           {d.requires_fee ? (
@@ -282,6 +301,16 @@ export default function SpecialDatesManager() {
                                 onChange={e => setEditDescription(e.target.value)}
                                 className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                                 placeholder="Opcional"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Pessoas Incluídas (Opcional)</label>
+                              <input 
+                                type="number" 
+                                value={editIncludedGuests} 
+                                onChange={e => setEditIncludedGuests(e.target.value)}
+                                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
+                                placeholder="Deixe vazio para não limitar"
                               />
                             </div>
                           </div>

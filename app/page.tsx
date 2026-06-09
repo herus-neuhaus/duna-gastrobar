@@ -30,6 +30,7 @@ export default function DunaGastrobarReservation() {
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
+  const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
   
   // States for "My Reservations"
   const [viewMode, setViewMode] = useState<'reserve' | 'check'>('reserve');
@@ -187,12 +188,17 @@ export default function DunaGastrobarReservation() {
     const { data, error } = await supabase
       .from('special_dates')
       .select('*')
-      .eq('date', selectedDate)
-      .maybeSingle();
+      .eq('date', selectedDate);
     
-    if (!error && data) {
-      setSpecialDateInfo(data);
+    if (!error && data && data.length > 0) {
+      setSpecialDatesOptions(data);
+      if (data.length === 1 && !data[0].included_guests) {
+        setSpecialDateInfo(data[0]);
+      } else {
+        setSpecialDateInfo(null);
+      }
     } else {
+      setSpecialDatesOptions([]);
       setSpecialDateInfo(null);
     }
   };
@@ -237,6 +243,7 @@ export default function DunaGastrobarReservation() {
     setCustomGuestCount('');
     setPolicyAccepted(false);
     setSpecialDateInfo(null);
+    setSpecialDatesOptions([]);
   };
 
   const handleSubmit = async () => {
@@ -642,7 +649,7 @@ export default function DunaGastrobarReservation() {
                   )}
                 </div>
 
-                {/* CAMPO 2: PESSOAS */}
+                {/* CAMPO 2: PESSOAS / PACOTES */}
                 <div className="relative border-t border-[#D9CFC1]">
                   <button
                     disabled={!date}
@@ -660,9 +667,13 @@ export default function DunaGastrobarReservation() {
                         <Users size={18} />
                       </div>
                       <div>
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pessoas</p>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">
+                          {specialDatesOptions.length > 0 && specialDatesOptions.some(d => d.included_guests) ? 'Pacote / Mesa' : 'Pessoas'}
+                        </p>
                         <p className="text-xs font-bold text-[#4A3728] mt-0.5">
-                          {guests ? `${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : 'Selecione'}
+                          {specialDateInfo && specialDateInfo.included_guests 
+                            ? specialDateInfo.description || `${specialDateInfo.included_guests} pessoas`
+                            : (guests ? `${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : 'Selecione')}
                         </p>
                       </div>
                     </div>
@@ -673,7 +684,39 @@ export default function DunaGastrobarReservation() {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setIsPessoasOpen(false)} />
                       <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 mx-2 flex flex-col max-h-72 overflow-y-auto custom-scrollbar">
-                        <div className="grid grid-cols-5 gap-2 p-4 shrink-0">
+                        
+                        {specialDatesOptions.length > 0 && specialDatesOptions.some(d => d.included_guests) ? (
+                          <div className="p-2 space-y-2">
+                            {specialDatesOptions.map((pkg) => (
+                              <button
+                                key={pkg.id}
+                                onClick={() => {
+                                  setSpecialDateInfo(pkg);
+                                  setGuests(pkg.included_guests || null);
+                                  setCustomGuestCount('');
+                                  setIsPessoasOpen(false);
+                                  setTime('');
+                                }}
+                                className={`w-full text-left p-3 rounded-xl border transition-all ${
+                                  specialDateInfo?.id === pkg.id
+                                    ? 'border-[#4A3728] bg-[#F5F2ED]'
+                                    : 'border-[#D9CFC1] hover:bg-[#F5F2ED]'
+                                }`}
+                              >
+                                <div className="font-bold text-sm text-[#4A3728]">
+                                  {pkg.description || `Mesa para ${pkg.included_guests} pessoas`}
+                                </div>
+                                {pkg.requires_fee && (
+                                  <div className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-wider flex items-center gap-1">
+                                    <AlertCircle size={10} /> Taxa: R$ {Number(pkg.fee_amount).toFixed(2).replace('.', ',')}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-5 gap-2 p-4 shrink-0">
                           {Array.from({ length: 30 }, (_, i) => i + 1).map((num) => {
                             const isOverflow = (totalGuestsForDate + num) > CAPACITY_LIMIT;
                             return (
@@ -711,6 +754,8 @@ export default function DunaGastrobarReservation() {
                           </div>
                           <span className="text-[8px] uppercase tracking-widest text-[#128C7E]">WhatsApp →</span>
                         </button>
+                          </>
+                        )}
                       </div>
                     </>
                   )}

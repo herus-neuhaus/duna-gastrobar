@@ -195,6 +195,7 @@ export type Database = {
           id: string
           requires_fee: boolean | null
           updated_at: string | null
+          included_guests: number | null
         }
         Insert: {
           created_at?: string | null
@@ -204,6 +205,7 @@ export type Database = {
           id?: string
           requires_fee?: boolean | null
           updated_at?: string | null
+          included_guests?: number | null
         }
         Update: {
           created_at?: string | null
@@ -213,6 +215,7 @@ export type Database = {
           id?: string
           requires_fee?: boolean | null
           updated_at?: string | null
+          included_guests?: number | null
         }
         Relationships: []
       }
