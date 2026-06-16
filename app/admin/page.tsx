@@ -34,6 +34,7 @@ import {
 import WhatsAppModal from '@/app/components/WhatsAppModal';
 import AdminLayoutShell from './AdminLayoutShell';
 import SpecialDatesManager from './SpecialDatesManager';
+import BlockedDatesManager from './BlockedDatesManager';
 import FuncionariosManager from './FuncionariosManager';
 import TarefasManager from './TarefasManager';
 import ProdutividadeDashboard from './ProdutividadeDashboard';
@@ -485,6 +486,7 @@ function AdminDashboardContent() {
         <h2 className="text-3xl font-serif font-bold uppercase tracking-tight text-[#4A3728]">
           {view === 'reservations' && 'Monitor de Reservas'}
           {view === 'special_dates' && 'Gestão de Datas Especiais'}
+          {view === 'blocked_dates' && 'Datas Bloqueadas'}
           {view === 'funcionarios' && 'Gestão de Equipe'}
           {view === 'tarefas' && 'Gestão de Tarefas'}
           {view === 'produtividade' && 'Painel de Produtividade'}
@@ -492,6 +494,7 @@ function AdminDashboardContent() {
         <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/50">
           {view === 'reservations' && 'Acompanhe as reservas do dia'}
           {view === 'special_dates' && 'Configure datas com taxas de reserva antecipadas'}
+          {view === 'blocked_dates' && 'Bloqueie reservas para datas específicas'}
           {view === 'funcionarios' && 'Gerencie funcionários e cargos'}
           {view === 'tarefas' && 'Crie e organize tarefas e checklists'}
           {view === 'produtividade' && 'Monitore a execução das tarefas e aprove conclusões'}
@@ -500,6 +503,7 @@ function AdminDashboardContent() {
       <div className="p-6 lg:p-10">
         {view === 'reservations' && <ReservationsView />}
         {view === 'special_dates' && <SpecialDatesManager />}
+        {view === 'blocked_dates' && <BlockedDatesManager />}
         {view === 'funcionarios' && <FuncionariosManager />}
         {view === 'tarefas' && <TarefasManager />}
         {view === 'produtividade' && <ProdutividadeDashboard />}

@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, User, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,6 +30,7 @@ export default function DunaGastrobarReservation() {
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
   const [allSpecialDates, setAllSpecialDates] = useState<any[]>([]);
+  const [allBlockedDates, setAllBlockedDates] = useState<any[]>([]);
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
   const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
   
@@ -183,6 +184,11 @@ export default function DunaGastrobarReservation() {
     const { data: sdData } = await supabase.from('special_dates').select('*');
     if (sdData) {
       setAllSpecialDates(sdData);
+    }
+
+    const { data: bdData } = await supabase.from('blocked_dates').select('*');
+    if (bdData) {
+      setAllBlockedDates(bdData);
     }
   };
 
@@ -656,6 +662,28 @@ export default function DunaGastrobarReservation() {
                   )}
                 </div>
 
+                {date && allBlockedDates.find(b => b.date === date) ? (
+                  <div className="p-8 text-center animate-in fade-in zoom-in duration-300">
+                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CalendarOff size={32} />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#4A3728] mb-2">Reservas Bloqueadas</h3>
+                    <p className="text-sm text-[#4A3728]/70 mb-6">
+                      As reservas pelo site para este dia estão bloqueadas. Por favor, entre em contato pelo WhatsApp para tentar realizar a sua reserva.
+                    </p>
+                    <a 
+                      href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Olá, vi no site que as reservas para o dia ' + formatDisplayDate(parse(date, 'yyyy-MM-dd', new Date())) + ' estão bloqueadas. Teria alguma disponibilidade?')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#20b858] transition-colors"
+                    >
+                      <MessageCircle size={18} />
+                      Chamar no WhatsApp
+                    </a>
+                  </div>
+                ) : (
+                  <>
+
                 {/* CAMPO 2: PESSOAS / PACOTES */}
                 <div className="relative border-t border-[#D9CFC1]">
                   <button
@@ -999,6 +1027,8 @@ export default function DunaGastrobarReservation() {
                     {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : getConfirmationText()}
                   </button>
                 </div>
+                  </>
+                )}
 
               </div>
               <p className="text-center text-[9px] opacity-60 mt-3">

@@ -8,7 +8,8 @@ import {
   X,
   LogOut,
   Loader2,
-  CalendarDays
+  CalendarDays,
+  CalendarOff
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -154,6 +155,14 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
             className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'special_dates' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
           >
             <CalendarDays size={18} /> Datas Especiais
+          </Link>
+
+          <Link 
+            href="/admin?view=blocked_dates"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'blocked_dates' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <CalendarOff size={18} /> Bloqueios
           </Link>
 
           <Link 
