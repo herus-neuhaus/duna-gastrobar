@@ -496,7 +496,7 @@ export default function DunaGastrobarReservation() {
 
         {/* Informações da Unidade */}
         <div className="text-center mt-12 mb-2 px-4">
-          <h2 className="text-xl font-serif font-bold text-[#4A3728] uppercase tracking-wider">Duna Cozinha & Bar</h2>
+          <h2 className="text-xl font-serif font-bold text-[#4A3728] uppercase tracking-wider">Duna Cozinha & Bar 🍹</h2>
           <p className="text-[10px] text-[#4A3728]/60 font-bold uppercase tracking-widest mt-1">
             Reserva • Porto Velho, RO
           </p>
@@ -516,21 +516,21 @@ export default function DunaGastrobarReservation() {
               <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
                 <CheckCircle2 size={14} />
               </div>
-              <span className="text-[9px] font-bold text-[#4A3728] block">Reserva Rápida</span>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Reserva Rápida ⚡</span>
               <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">Em 1 minuto</span>
             </div>
             <div className="bg-white p-3 rounded-2xl border border-[#D9CFC1] shadow-sm text-center flex flex-col items-center justify-center">
               <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
                 <AlertCircle size={14} />
               </div>
-              <span className="text-[9px] font-bold text-[#4A3728] block">Tempo Real</span>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Tempo Real 🕒</span>
               <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">Mesas ao vivo</span>
             </div>
             <div className="bg-white p-3 rounded-2xl border border-[#D9CFC1] shadow-sm text-center flex flex-col items-center justify-center">
               <div className="w-7 h-7 rounded-full bg-[#4A3728]/10 text-[#4A3728] flex items-center justify-center mb-1">
                 <MessageCircle size={14} />
               </div>
-              <span className="text-[9px] font-bold text-[#4A3728] block">Confirmação</span>
+              <span className="text-[9px] font-bold text-[#4A3728] block">Confirmação ✅</span>
               <span className="text-[7px] text-[#4A3728]/50 uppercase tracking-wider">No WhatsApp</span>
             </div>
           </div>
@@ -1009,7 +1009,7 @@ export default function DunaGastrobarReservation() {
             /* VISUALIZAÇÃO: MINHAS RESERVAS */
             <div className="p-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="mb-8">
-                <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Consultar Reservas</h2>
+                <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Consultar Reservas 🔎</h2>
                 <p className="text-[11px] opacity-60 leading-relaxed uppercase tracking-widest text-[#4A3728]">
                   Informe seu WhatsApp para acompanhar o status da sua reserva.
                 </p>
