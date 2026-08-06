@@ -1,5 +1,160 @@
 @import "tailwindcss";
 
+:root {
+  --duna-gold: #e6a72d;
+  --duna-gold-light: #ffd46b;
+  --duna-cream: #f3e5cd;
+  --duna-wood: #160c07;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body), sans-serif;
+}
+
+.font-serif {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+.font-sans {
+  font-family: var(--font-body), Arial, sans-serif;
+}
+
+.duna-site {
+  background-color: #0c0704;
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(221, 124, 25, 0.22), transparent 25rem),
+    radial-gradient(circle at 90% 32%, rgba(211, 131, 42, 0.14), transparent 24rem),
+    repeating-linear-gradient(3deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 8px),
+    linear-gradient(110deg, #090503, #241209 48%, #0b0604);
+  background-attachment: fixed;
+}
+
+.duna-shell {
+  border: 1px solid rgba(184, 104, 42, 0.52);
+  background:
+    repeating-linear-gradient(2deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 7px),
+    linear-gradient(105deg, #110906, #28150c 52%, #100906);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.72), inset 0 0 70px rgba(0, 0, 0, 0.3);
+}
+
+.duna-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 32%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(transparent, #100906);
+}
+
+.duna-hero > div {
+  z-index: 2;
+}
+
+.duna-brand img,
+.duna-mini-brand img {
+  filter: sepia(1) saturate(.55) brightness(1.45);
+}
+
+.duna-gold-button,
+.duna-submit.is-ready {
+  border: 1px solid #ffe39a;
+  color: #1b1007;
+  background: linear-gradient(105deg, #d9890b, #ffd35f 48%, #e99a14);
+  box-shadow: 0 0 7px #fff0b5, 0 0 24px rgba(245, 164, 25, 0.78), inset 0 1px rgba(255,255,255,.65);
+}
+
+.duna-gold-button:hover,
+.duna-submit.is-ready:hover {
+  filter: brightness(1.08);
+}
+
+.duna-links {
+  background: linear-gradient(#100905, rgba(16, 9, 5, .72));
+}
+
+.duna-dark-link {
+  border: 1px solid rgba(163, 84, 35, .78);
+  background: linear-gradient(120deg, rgba(38, 28, 22, .92), rgba(12, 10, 9, .96));
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 8px 18px rgba(0,0,0,.2);
+}
+
+.duna-dark-link:hover {
+  border-color: #d9913e;
+  background: #2a1b13;
+}
+
+.duna-reservation-heading {
+  position: relative;
+  color: #2b190f;
+  background:
+    radial-gradient(circle at 50% 0, rgba(255,255,255,.8), transparent 60%),
+    linear-gradient(110deg, #ead6b7, #fff3de 50%, #e5cba7);
+  border-bottom-left-radius: 50% 44px;
+  border-bottom-right-radius: 50% 44px;
+  box-shadow: 0 14px 28px rgba(0,0,0,.35);
+}
+
+.duna-tabs {
+  color: var(--duna-cream);
+  border: 1px solid rgba(197, 122, 57, .42);
+  background: rgba(13, 8, 5, .68);
+}
+
+.duna-tabs button {
+  color: rgba(243, 229, 205, .55) !important;
+}
+
+.duna-tabs button[class*="bg-[#FDFBF7]"] {
+  color: #25150c !important;
+  background: linear-gradient(110deg, #ead7ba, #fff3df) !important;
+}
+
+.duna-reservation-area {
+  color: #3a271a;
+}
+
+.duna-form-card {
+  border-color: #cbbca8;
+  background: rgba(251, 246, 238, .98);
+  box-shadow: 0 18px 35px rgba(0,0,0,.4);
+}
+
+.duna-submit.is-ready {
+  color: #1a1008 !important;
+}
+
+.duna-success-card {
+  color: #f4e6ce;
+  border: 1px solid rgba(210, 141, 68, .58);
+  background:
+    repeating-linear-gradient(2deg, rgba(255,255,255,.018) 0 1px, transparent 1px 7px),
+    linear-gradient(120deg, #24140c, #0f0906);
+  box-shadow: 0 28px 70px rgba(0,0,0,.65);
+}
+
+@media (max-width: 639px) {
+  .duna-site {
+    min-height: 100svh;
+    background-attachment: scroll;
+  }
+
+  .duna-shell {
+    border-left: 0;
+    border-right: 0;
+    min-height: 100svh;
+  }
+
+  .duna-reservation-heading h2 {
+    font-size: 39px;
+  }
+}
+
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;

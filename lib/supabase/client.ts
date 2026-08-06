@@ -2,16 +2,16 @@ import { createBrowserClient } from '@supabase/ssr'
 
 export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  // Se as variáveis estiverem ausentes (como durante o build do Vercel),
-  // fornecemos valores temporários para evitar que o @supabase/ssr quebre o build.
-  // No runtime, as variáveis reais devem ser configuradas no painel do Vercel.
   if (!supabaseUrl || !supabaseKey) {
-    return createBrowserClient(
-      'https://placeholder-url.supabase.co',
-      'placeholder-key'
+    throw new Error(
+      'Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no arquivo .env.local e reinicie o servidor.'
     );
+  }
+
+  if (supabaseKey.startsWith('sb_secret_')) {
+    throw new Error('Uma chave secreta do Supabase não pode ser usada no navegador. Use a chave sb_publishable_.');
   }
 
   return createBrowserClient(supabaseUrl, supabaseKey);

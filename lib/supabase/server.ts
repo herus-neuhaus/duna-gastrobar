@@ -5,16 +5,21 @@ export async function createClient() {
   const cookieStore = await cookies()
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  // Fornece fallbacks durante o build para evitar erro de inicialização.
-  // As variáveis reais devem ser inseridas no Vercel Dashboard.
-  const url = supabaseUrl || 'https://placeholder-url.supabase.co';
-  const key = supabaseKey || 'placeholder-key';
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      'Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.'
+    );
+  }
+
+  if (supabaseKey.startsWith('sb_secret_')) {
+    throw new Error('Use a chave publishable do Supabase, nunca uma chave secreta em NEXT_PUBLIC_.');
+  }
 
   return createServerClient(
-    url,
-    key,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {

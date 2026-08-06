@@ -120,7 +120,7 @@ export default function FuncionariosManager() {
     setEmployeeError('');
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
     // Create a temporary client that does not persist session to avoid logging out the admin
     const tempClient = createSupabaseJSClient(supabaseUrl, supabaseKey, {
