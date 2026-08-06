@@ -44,11 +44,25 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient();
+    const { data: reservation, error: reservationError } = await supabase
+      .from('reservations')
+      .select('status, num_guests')
+      .eq('id', reservationId)
+      .single();
+
+    if (reservationError || !reservation || reservation.num_guests < 15) {
+      return NextResponse.json({ error: 'Reserva de grupo não encontrada.' }, { status: 404 });
+    }
+
+    const currentStatus = (reservation.status || 'pending').toLowerCase();
+    const wasCancelled = currentStatus === 'cancelled' || currentStatus === 'cancelado';
     const { error } = await supabase
       .from('reservations')
-      .update({ payment_status: 'paid' })
-      .eq('id', reservationId)
-      .gte('num_guests', 15);
+      .update({
+        payment_status: 'paid',
+        ...(wasCancelled ? {} : { status: 'confirmed' }),
+      })
+      .eq('id', reservationId);
 
     if (error) throw error;
 

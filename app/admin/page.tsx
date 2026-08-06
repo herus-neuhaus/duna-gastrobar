@@ -60,8 +60,8 @@ function ReservationsView() {
   const supabase = createClient();
   const datePickerRef = useRef<HTMLDivElement>(null);
 
-  const fetchReservations = React.useCallback(async () => {
-    setLoading(true);
+  const fetchReservations = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data, error } = await supabase
       .from('reservations')
       .select('*')
@@ -75,11 +75,21 @@ function ReservationsView() {
     } else {
       setReservations(data || []);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [supabase, startDate, endDate]);
 
   useEffect(() => {
     fetchReservations();
+  }, [fetchReservations]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchReservations(true);
+      }
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
   }, [fetchReservations]);
 
   // Close date picker when clicking outside
