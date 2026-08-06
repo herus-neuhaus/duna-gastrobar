@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, BookOpen, Navigation, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, BookOpen, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -20,12 +20,23 @@ export default function DunaGastrobarReservation() {
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
   const [customGuestCount, setCustomGuestCount] = useState('');
-  const [formData, setFormData] = useState({ name: '', email: '', whatsapp: '' });
-  const [formErrors, setFormErrors] = useState({ name: '', email: '', whatsapp: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', whatsapp: '', cpf: '' });
+  const [formErrors, setFormErrors] = useState({ name: '', email: '', whatsapp: '', cpf: '' });
   
   // Status States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [reservationId, setReservationId] = useState('');
+  const [pixPayment, setPixPayment] = useState<{
+    orderId: string;
+    qrCode: string;
+    qrCodeUrl?: string;
+    expiresAt?: string;
+    amount: number;
+  } | null>(null);
+  const [pixError, setPixError] = useState('');
+  const [isCreatingPix, setIsCreatingPix] = useState(false);
+  const [pixCopied, setPixCopied] = useState(false);
   const [capacityError, setCapacityError] = useState(false);
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
@@ -50,6 +61,7 @@ export default function DunaGastrobarReservation() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
+  const [paymentCpf, setPaymentCpf] = useState('');
   
   const supabase = createClient();
 
@@ -89,7 +101,7 @@ export default function DunaGastrobarReservation() {
 
   const validateForm = () => {
     let valid = true;
-    const errors = { name: '', email: '', whatsapp: '' };
+    const errors = { name: '', email: '', whatsapp: '', cpf: '' };
 
     if (!formData.name.trim()) {
       errors.name = 'Nome é obrigatório.';
@@ -109,6 +121,11 @@ export default function DunaGastrobarReservation() {
       valid = false;
     } else if (!/^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$/.test(formData.whatsapp)) {
       errors.whatsapp = 'Formato inválido. Ex: (11) 99999-9999';
+      valid = false;
+    }
+
+    if ((guests || 0) >= 15 && formData.cpf.replace(/\D/g, '').length !== 11) {
+      errors.cpf = 'Informe um CPF válido para gerar o PIX.';
       valid = false;
     }
 
@@ -244,15 +261,43 @@ export default function DunaGastrobarReservation() {
     setGuests(null);
     setTime('');
     setNotes('');
-    setFormData({ name: '', email: '', whatsapp: '' });
-    setFormErrors({ name: '', email: '', whatsapp: '' });
+    setFormData({ name: '', email: '', whatsapp: '', cpf: '' });
+    setFormErrors({ name: '', email: '', whatsapp: '', cpf: '' });
     setIsSuccess(false);
+    setReservationId('');
+    setPixPayment(null);
+    setPixError('');
+    setPixCopied(false);
     setCapacityError(false);
     setTotalGuestsForDate(0);
     setCustomGuestCount('');
     setPolicyAccepted(false);
     setSpecialDateInfo(null);
     setSpecialDatesOptions([]);
+  };
+
+  const createPixPayment = async (id: string, cpf = formData.cpf) => {
+    setIsCreatingPix(true);
+    setPixError('');
+
+    try {
+      const response = await fetch('/api/payments/pix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationId: id, cpf }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Não foi possível gerar o PIX.');
+      }
+
+      setPixPayment(data);
+    } catch (error) {
+      setPixError(error instanceof Error ? error.message : 'Não foi possível gerar o PIX.');
+    } finally {
+      setIsCreatingPix(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -276,13 +321,14 @@ export default function DunaGastrobarReservation() {
       return;
     }
 
-    const { error } = await supabase
+    const { data: createdReservation, error } = await supabase
       .from('reservations')
       .insert([
         {
           name: formData.name,
           email: formData.email,
           whatsapp: formData.whatsapp,
+          cpf: finalGuests >= 15 ? formData.cpf.replace(/\D/g, '') : null,
           reservation_date: date,
           reservation_time: time,
           num_guests: finalGuests,
@@ -291,7 +337,9 @@ export default function DunaGastrobarReservation() {
           payment_status: (specialDateInfo?.requires_fee || (finalGuests && finalGuests >= 15)) ? 'pending' : 'not_required',
           payment_amount: specialDateInfo?.requires_fee ? specialDateInfo.fee_amount : ((finalGuests && finalGuests >= 15) ? 100 : 0),
         },
-      ]);
+      ])
+      .select('id')
+      .single();
 
     if (error) {
       if (error.message.includes('CAPACITY_EXCEEDED')) {
@@ -301,6 +349,13 @@ export default function DunaGastrobarReservation() {
         alert('Erro ao enviar reserva: ' + error.message);
       }
     } else {
+      const createdId = createdReservation?.id || '';
+      setReservationId(createdId);
+
+      if (finalGuests >= 15 && createdId) {
+        await createPixPayment(createdId);
+      }
+
       setIsSuccess(true);
       if (finalGuests < 15 && !specialDateInfo?.requires_fee) {
         handleWhatsAppRedirect('success');
@@ -386,6 +441,9 @@ export default function DunaGastrobarReservation() {
     
     if (newVal >= 15 && oldVal < 15) {
       setPaymentModalData({ res, newVal, url });
+      setPaymentCpf('');
+      setPixPayment(null);
+      setPixError('');
       setShowPaymentInfo(true);
     } else {
       window.open(url, '_blank');
@@ -401,6 +459,15 @@ export default function DunaGastrobarReservation() {
       return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3').replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
     }
     return value;
+  };
+
+  const formatCpf = (value: string) => {
+    return value
+      .replace(/\D/g, '')
+      .slice(0, 11)
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   };
 
   const getConfirmationText = () => {
@@ -422,36 +489,79 @@ export default function DunaGastrobarReservation() {
             <CheckCircle2 size={40} />
           </div>
           <h1 className="text-3xl font-serif font-bold mb-2">Reserva solicitada!</h1>
-          <p className="text-sm opacity-70 mb-8">Recebemos seu pedido. Enviamos os detalhes para o nosso WhatsApp para agilizar sua confirmação.</p>
-          
-          {(guests && (guests >= 15 || specialDateInfo?.requires_fee)) && (
+          <p className="text-sm opacity-70 mb-8">
+            {(guests || 0) >= 15
+              ? 'Sua mesa foi registrada. Conclua o pagamento PIX para confirmar a reserva de grupo.'
+              : 'Recebemos seu pedido. Confirme os detalhes com nossa equipe pelo WhatsApp.'}
+          </p>
+
+          {(guests || 0) >= 15 && (
             <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[24px] text-left animate-in fade-in zoom-in duration-500">
               <p className="text-xs font-bold text-amber-900 mb-2 uppercase tracking-wider flex items-center gap-2">
-                <AlertCircle size={16} /> {specialDateInfo?.requires_fee ? `Pagamento: ${specialDateInfo.description || 'Data Especial'}` : 'Pagamento de Grupo'}
+                <AlertCircle size={16} /> PIX da reserva de grupo
               </p>
               <p className="text-[11px] text-amber-800 leading-relaxed mb-4">
-                {specialDateInfo?.requires_fee 
-                  ? `Para reservas nesta data especial, é necessário o pagamento de taxa de reserva de ` 
-                  : `Para reservas acima de 15 pessoas, é necessário o pagamento de `}
-                <strong>R$ {specialDateInfo?.requires_fee ? Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',') : '100,00'}</strong> (revertido em consumação).
+                Taxa de <strong>R$ 100,00</strong>, revertida em consumação. A confirmação é automática após o pagamento.
               </p>
-              <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl">
-                <p className="text-[9px] text-red-800 font-bold uppercase mb-1">⚠️ Política de Atraso e Cancelamento</p>
-                <p className="text-[9px] text-red-700 leading-tight">
-                  Tolerância máxima de <strong>20 minutos</strong>. Após esse prazo, a reserva é cancelada e o valor da taxa <strong>não será devolvido</strong>.
-                </p>
-              </div>
-              <a 
-                href="https://payment-link-v3.stone.com.br/pl_xa7k1LDo6qzO8Z7FyVheNpG9YMvrX2Q5" 
-                target="_blank" 
+
+              {isCreatingPix && (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm font-semibold text-amber-900">
+                  <Loader2 size={20} className="animate-spin" /> Gerando PIX seguro...
+                </div>
+              )}
+
+              {pixPayment && (
+                <div className="space-y-3">
+                  {pixPayment.qrCodeUrl && (
+                    <img
+                      src={pixPayment.qrCodeUrl}
+                      alt="QR Code PIX da reserva"
+                      className="mx-auto aspect-square w-full max-w-56 rounded-2xl bg-white p-2"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(pixPayment.qrCode);
+                      setPixCopied(true);
+                      window.setTimeout(() => setPixCopied(false), 2500);
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4A3728] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white active:scale-[0.98]"
+                  >
+                    {pixCopied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                    {pixCopied ? 'Código copiado' : 'Copiar PIX copia e cola'}
+                  </button>
+                  <p className="text-center text-[9px] text-amber-800/70">O código PIX expira em 30 minutos.</p>
+                </div>
+              )}
+
+              {pixError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center">
+                  <p className="mb-3 text-[10px] font-semibold text-red-700">{pixError}</p>
+                  <button
+                    type="button"
+                    disabled={isCreatingPix || !reservationId}
+                    onClick={() => createPixPayment(reservationId)}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-[9px] font-bold uppercase tracking-wider text-white disabled:opacity-50"
+                  >
+                    Tentar gerar novamente
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(guests || 0) < 15 && specialDateInfo?.requires_fee && (
+            <div className="mb-8 rounded-[24px] border border-amber-200 bg-amber-50 p-6 text-left">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-900">Pagamento da data especial</p>
+              <a
+                href="https://payment-link-v3.stone.com.br/pl_xa7k1LDo6qzO8Z7FyVheNpG9YMvrX2Q5"
+                target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full py-3 bg-[#4A3728] text-white rounded-xl font-bold text-center text-[10px] uppercase tracking-widest shadow-lg shadow-amber-200 active:scale-95 transition-all mb-3"
+                className="block w-full rounded-xl bg-[#4A3728] py-3 text-center text-[10px] font-bold uppercase tracking-widest text-white"
               >
-                Pagar com Stone (R$ {specialDateInfo?.requires_fee ? Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',') : '100,00'})
+                Pagar R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')}
               </a>
-              <p className="text-[9px] text-amber-700/60 text-center italic">
-                *Após o pagamento, clique no botão abaixo para nos enviar o comprovante.
-              </p>
             </div>
           )}
 
@@ -460,12 +570,14 @@ export default function DunaGastrobarReservation() {
             className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
           >
             <MessageCircle size={18} />
-            { (guests && (guests >= 15 || specialDateInfo?.requires_fee)) ? 'Enviar Comprovante de Pagamento' : 'Confirmar no WhatsApp' }
+            {(guests || 0) >= 15 ? 'Falar com a equipe' : specialDateInfo?.requires_fee ? 'Enviar comprovante' : 'Confirmar no WhatsApp'}
           </button>
           <p className="text-center text-[9px] opacity-60 mb-6 px-4">
-            { (guests && (guests >= 15 || specialDateInfo?.requires_fee))
-              ? 'Após realizar o pagamento, clique acima para enviar o comprovante e finalizar sua reserva.' 
-              : 'Clique acima para notificar nossa equipe sobre sua reserva.' }
+            {(guests || 0) >= 15
+              ? 'Não é necessário enviar comprovante: o pagamento é confirmado automaticamente.'
+              : specialDateInfo?.requires_fee
+                ? 'Após o pagamento, envie o comprovante para nossa equipe.'
+                : 'Clique acima para notificar nossa equipe sobre sua reserva.'}
           </p>
           <a 
             href="https://dunacozinhabar.cfshop.com.br/" 
@@ -1037,11 +1149,31 @@ export default function DunaGastrobarReservation() {
                       />
                       {formErrors.whatsapp && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.whatsapp}</p>}
                     </div>
+                    {guests >= 15 && (
+                      <div>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
+                            formErrors.cpf ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
+                          }`}
+                          value={formData.cpf}
+                          onChange={(e) => {
+                            setFormData({...formData, cpf: formatCpf(e.target.value)});
+                            if (formErrors.cpf) setFormErrors({...formErrors, cpf: ''});
+                          }}
+                          placeholder="CPF para o pagamento PIX"
+                        />
+                        {formErrors.cpf && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.cpf}</p>}
+                        <p className="ml-1 mt-1 text-[8px] text-[#4A3728]/50">Exigido pelo Pagar.me para gerar o PIX.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* POLÍTICA DE ATRASO / CONCORDÂNCIA */}
-                {date && guests && time && formData.name && formData.email && formData.whatsapp && (
+                {date && guests && time && formData.name && formData.email && formData.whatsapp && (guests < 15 || formData.cpf) && (
                   <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex items-start gap-3 animate-in fade-in duration-300">
                     <input
                       id="terms-check"
@@ -1051,7 +1183,10 @@ export default function DunaGastrobarReservation() {
                       className="w-5 h-5 rounded-md border-amber-300 text-[#4A3728] focus:ring-[#4A3728] cursor-pointer mt-0.5"
                     />
                     <label htmlFor="terms-check" className="text-[11px] leading-normal text-amber-900 cursor-pointer font-medium">
-                      Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong> e que a taxa de reserva {specialDateInfo?.requires_fee ? 'desta data especial' : 'de grupo'} <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento.
+                      Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong>
+                      {(guests >= 15 || specialDateInfo?.requires_fee) && (
+                        <> e que a taxa de reserva <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento</>
+                      )}.
                     </label>
                   </div>
                 )}
@@ -1059,14 +1194,14 @@ export default function DunaGastrobarReservation() {
                 {/* BOTÃO DE CONFIRMAÇÃO */}
                 <div className="p-4 border-t border-[#D9CFC1] bg-white rounded-b-[28px]">
                   <button
-                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || !policyAccepted || isSubmitting}
+                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || (guests >= 15 && !formData.cpf) || !policyAccepted || isSubmitting}
                     onClick={async () => {
                       if (validateForm()) {
                         await handleSubmit();
                       }
                     }}
                     className={`duna-submit w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
-                      policyAccepted && date && guests && time && formData.name && formData.whatsapp
+                      policyAccepted && date && guests && time && formData.name && formData.whatsapp && (guests < 15 || formData.cpf)
                        ? 'is-ready active:scale-[0.98]'
                       : 'bg-stone-300 cursor-not-allowed shadow-none text-stone-500'
                     }`}
@@ -1255,7 +1390,7 @@ export default function DunaGastrobarReservation() {
       {showPaymentInfo && paymentModalData && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-[#4A3728]/60 backdrop-blur-sm" onClick={() => setShowPaymentInfo(false)} />
-          <div className="relative w-full max-w-[380px] bg-[#FDFBF7] rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+          <div className="relative max-h-[92svh] w-full max-w-[380px] overflow-y-auto rounded-[32px] bg-[#FDFBF7] shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="bg-[#4A3728] p-6 text-center">
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertCircle size={32} />
@@ -1293,32 +1428,61 @@ export default function DunaGastrobarReservation() {
                   </label>
                 </div>
 
-                <a 
-                  href={paymentPolicyAccepted ? "https://payment-link-v3.stone.com.br/pl_xa7k1LDo6qzO8Z7FyVheNpG9YMvrX2Q5" : "#"} 
-                  target={paymentPolicyAccepted ? "_blank" : undefined}
-                  rel="noopener noreferrer"
-                  onClick={(e) => !paymentPolicyAccepted && e.preventDefault()}
-                  className={`block w-full py-3 text-white rounded-xl font-bold text-center text-[10px] uppercase tracking-widest shadow-lg active:scale-95 transition-all mb-3 ${
-                    paymentPolicyAccepted ? 'bg-[#4A3728] shadow-amber-200' : 'bg-stone-300 cursor-not-allowed shadow-none'
-                  }`}
-                >
-                  Pagar com Stone (R$ 100,00)
-                </a>
+                {!pixPayment && (
+                  <>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={paymentCpf}
+                      onChange={(e) => setPaymentCpf(formatCpf(e.target.value))}
+                      placeholder="CPF para gerar o PIX"
+                      className="mb-3 w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-[#4A3728] outline-none focus:border-[#4A3728]"
+                    />
+                    <button
+                      type="button"
+                      disabled={!paymentPolicyAccepted || paymentCpf.replace(/\D/g, '').length !== 11 || isCreatingPix}
+                      onClick={() => createPixPayment(paymentModalData.res.id, paymentCpf)}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4A3728] py-3 text-[10px] font-bold uppercase tracking-widest text-white disabled:cursor-not-allowed disabled:bg-stone-300"
+                    >
+                      {isCreatingPix && <Loader2 size={16} className="animate-spin" />}
+                      Gerar PIX de R$ 100,00
+                    </button>
+                  </>
+                )}
+
+                {pixPayment && (
+                  <div className="space-y-3">
+                    {pixPayment.qrCodeUrl && (
+                      <img src={pixPayment.qrCodeUrl} alt="QR Code PIX" className="mx-auto aspect-square w-full max-w-52 rounded-xl bg-white p-2" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(pixPayment.qrCode);
+                        setPixCopied(true);
+                        window.setTimeout(() => setPixCopied(false), 2500);
+                      }}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4A3728] py-3 text-[10px] font-bold uppercase tracking-widest text-white"
+                    >
+                      {pixCopied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                      {pixCopied ? 'Código copiado' : 'Copiar PIX copia e cola'}
+                    </button>
+                  </div>
+                )}
+
+                {pixError && <p className="mt-3 text-center text-[10px] font-semibold text-red-700">{pixError}</p>}
               </div>
 
               <button 
-                disabled={!paymentPolicyAccepted}
                 onClick={() => {
                   window.open(paymentModalData.url, '_blank');
                   setShowPaymentInfo(false);
                   setPaymentPolicyAccepted(false);
                 }}
-                className={`w-full py-4 text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all ${
-                  paymentPolicyAccepted ? 'bg-[#25D366] shadow-green-200' : 'bg-stone-200 text-[#4A3728]/30 cursor-not-allowed shadow-none'
-                }`}
+                className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#25D366] py-4 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-green-200 transition-all active:scale-95"
               >
                 <MessageCircle size={18} />
-                Enviar Comprovante no WhatsApp
+                Falar com a equipe
               </button>
               
               <button 
