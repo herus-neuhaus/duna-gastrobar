@@ -302,54 +302,32 @@ export default function DunaGastrobarReservation() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    
-    const { data: currentData } = await supabase
-      .from('reservations')
-      .select('num_guests')
-      .eq('reservation_date', date)
-      .not('status', 'ilike', 'cancelled')
-      .not('status', 'ilike', 'cancelado');
-    
-    const currentTotal = (currentData || []).reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
     const finalGuests = guests || 0;
-    
-    if (finalGuests && (currentTotal + finalGuests > CAPACITY_LIMIT)) {
-      setCapacityError(true);
-      setTotalGuestsForDate(currentTotal);
-      setIsSubmitting(false);
-      alert('Lamentamos, mas a capacidade para este dia acabou de ser atingida. Por favor, escolha outra data.');
-      return;
-    }
 
-    const { data: createdReservation, error } = await supabase
-      .from('reservations')
-      .insert([
-        {
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: formData.name,
           email: formData.email,
           whatsapp: formData.whatsapp,
-          cpf: finalGuests >= 15 ? formData.cpf.replace(/\D/g, '') : null,
-          reservation_date: date,
-          reservation_time: time,
-          num_guests: finalGuests,
-          notes: notes,
-          status: 'pending',
-          payment_status: (specialDateInfo?.requires_fee || (finalGuests && finalGuests >= 15)) ? 'pending' : 'not_required',
-          payment_amount: specialDateInfo?.requires_fee ? specialDateInfo.fee_amount : ((finalGuests && finalGuests >= 15) ? 100 : 0),
-        },
-      ])
-      .select('id')
-      .single();
+          cpf: formData.cpf,
+          date,
+          time,
+          guests: finalGuests,
+          notes,
+          specialDateId: specialDateInfo?.id || null,
+        }),
+      });
+      const result = await response.json();
 
-    if (error) {
-      if (error.message.includes('CAPACITY_EXCEEDED')) {
-        setCapacityError(true);
-        alert('Capacidade Esgotada: Não foi possível finalizar pois o limite de 80 pessoas foi atingido para este dia.');
-      } else {
-        alert('Erro ao enviar reserva: ' + error.message);
+      if (!response.ok) {
+        if (response.status === 409) setCapacityError(true);
+        throw new Error(result.error || 'Não foi possível criar a reserva.');
       }
-    } else {
-      const createdId = createdReservation?.id || '';
+
+      const createdId = result.id || '';
       setReservationId(createdId);
 
       if (finalGuests >= 15 && createdId) {
@@ -360,8 +338,11 @@ export default function DunaGastrobarReservation() {
       if (finalGuests < 15 && !specialDateInfo?.requires_fee) {
         handleWhatsAppRedirect('success');
       }
+    } catch (error) {
+      alert('Erro ao enviar reserva: ' + (error instanceof Error ? error.message : 'Tente novamente.'));
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   const fetchUserReservations = async () => {
