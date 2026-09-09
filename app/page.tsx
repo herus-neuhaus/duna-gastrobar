@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, BookOpen, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
 import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -641,15 +641,6 @@ export default function DunaGastrobarReservation() {
         </div>
 
         <div className="duna-links px-5 py-5 space-y-3">
-          <a
-            href="https://dunacozinhabar.cfshop.com.br/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="duna-dark-link flex items-center justify-center gap-3 rounded-2xl px-4 py-4 text-sm font-bold uppercase tracking-wide text-white transition-colors"
-          >
-            <BookOpen size={21} />
-            Ver cardápio
-          </a>
           <a
             href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7"
             target="_blank"
