@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { createClient as createSupabaseJSClient } from '@supabase/supabase-js';
 import { Loader2, Plus, Users, Shield, UserPlus, X, Pencil, Trash2, Save } from 'lucide-react';
 import { Database } from '@/lib/supabase/database.types';
 
@@ -33,7 +32,7 @@ export default function FuncionariosManager() {
   // Status updates
   const [updating, setUpdating] = useState<string | null>(null);
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -49,7 +48,11 @@ export default function FuncionariosManager() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchData();
+    const timeout = window.setTimeout(() => {
+      void fetchData();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [fetchData]);
 
   const handleCreateRole = async (e: React.FormEvent) => {
@@ -119,46 +122,23 @@ export default function FuncionariosManager() {
     setCreatingEmployee(true);
     setEmployeeError('');
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+    try {
+      const response = await fetch('/api/admin/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employeeForm),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível cadastrar o membro.');
 
-    // Create a temporary client that does not persist session to avoid logging out the admin
-    const tempClient = createSupabaseJSClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-
-    const { data: authData, error: authError } = await tempClient.auth.signUp({
-      email: employeeForm.email,
-      password: employeeForm.password,
-    });
-
-    if (authError) {
-      setEmployeeError(authError.message);
+      setShowEmployeeModal(false);
+      setEmployeeForm({ name: '', email: '', password: '', role: 'employee', job_role_id: '' });
+      await fetchData();
+    } catch (error) {
+      setEmployeeError(error instanceof Error ? error.message : 'Não foi possível cadastrar o membro.');
+    } finally {
       setCreatingEmployee(false);
-      return;
     }
-
-    if (authData.user) {
-      // Atualiza o profile criado automaticamente via trigger
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          full_name: employeeForm.name,
-          role: employeeForm.role,
-          job_role_id: employeeForm.job_role_id || null,
-          force_password_change: true
-        })
-        .eq('id', authData.user.id);
-
-      if (profileError) {
-        setEmployeeError('Usuário criado, mas erro ao atualizar perfil: ' + profileError.message);
-      } else {
-        setShowEmployeeModal(false);
-        setEmployeeForm({ name: '', email: '', password: '', role: 'employee', job_role_id: '' });
-        fetchData(); // Recarrega a lista
-      }
-    }
-    setCreatingEmployee(false);
   };
 
   if (loading) {

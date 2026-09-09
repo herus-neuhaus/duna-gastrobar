@@ -12,6 +12,10 @@ type SpecialDate = {
   included_guests?: number | null;
 };
 
+function getToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
+}
+
 export default function SpecialDatesManager() {
   const [dates, setDates] = useState<SpecialDate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,13 +34,15 @@ export default function SpecialDatesManager() {
   const [editDescription, setEditDescription] = useState('');
   const [editIncludedGuests, setEditIncludedGuests] = useState('');
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
+  const today = getToday();
 
   const fetchDates = React.useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('special_dates')
       .select('*')
+      .gte('date', getToday())
       .order('date', { ascending: true });
 
     if (!error && data) {
@@ -46,7 +52,11 @@ export default function SpecialDatesManager() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchDates();
+    const timeout = window.setTimeout(() => {
+      void fetchDates();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [fetchDates]);
 
   const handleAddDate = async (e: React.FormEvent) => {
@@ -129,29 +139,28 @@ export default function SpecialDatesManager() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-white rounded-[32px] p-8 border border-[#D9CFC1] flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-[#F5F2ED] rounded-2xl flex items-center justify-center text-[#4A3728]">
-            <CalendarDays size={32} />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-[#4A3728]">Datas Especiais</h3>
-            <p className="text-sm text-[#4A3728]/60">Configure datas comemorativas que exigem cobrança de taxa de reserva (ex: Dia dos Namorados).</p>
-          </div>
+      <div className="bg-white rounded-[28px] p-5 md:p-7 border border-[#D9CFC1] flex items-start gap-4 shadow-sm">
+        <div className="w-12 h-12 shrink-0 bg-[#F5F2ED] rounded-2xl flex items-center justify-center text-[#4A3728]">
+          <CalendarDays size={24} />
+        </div>
+        <div>
+          <h3 className="text-lg md:text-xl font-bold text-[#4A3728]">Datas Especiais</h3>
+          <p className="mt-1 text-sm leading-relaxed text-[#4A3728]/60">Configure apenas os próximos eventos com taxa ou pacote de reserva.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Formulário */}
-        <div className="lg:col-span-1">
-          <form onSubmit={handleAddDate} className="bg-white rounded-[32px] border border-[#D9CFC1] p-6 shadow-sm space-y-4">
-            <h4 className="text-sm font-bold uppercase tracking-widest text-[#4A3728] mb-4">Adicionar Nova Data</h4>
-            
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-6 xl:gap-8">
+        <form onSubmit={handleAddDate} className="bg-white rounded-[28px] border border-[#D9CFC1] p-5 md:p-6 shadow-sm space-y-4 h-fit xl:sticky xl:top-6">
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <h4 className="text-sm font-bold uppercase tracking-widest text-[#4A3728]">Nova data</h4>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/40">Futuras</span>
+          </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Data</label>
               <input 
                 type="date" 
                 required
+                min={today}
                 value={newDate} 
                 onChange={e => setNewDate(e.target.value)}
                 className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
@@ -213,12 +222,16 @@ export default function SpecialDatesManager() {
             >
               {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> Adicionar Data</>}
             </button>
-          </form>
-        </div>
+        </form>
 
-        {/* Lista */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-[32px] border border-[#D9CFC1] shadow-sm overflow-hidden min-h-[300px]">
+        <div className="bg-white rounded-[28px] border border-[#D9CFC1] shadow-sm overflow-hidden min-h-[300px]">
+          <div className="flex items-center justify-between gap-4 border-b border-[#D9CFC1]/60 px-5 py-4 md:px-6">
+            <div>
+              <h4 className="font-bold text-[#4A3728]">Próximas datas</h4>
+              <p className="mt-0.5 text-xs text-[#4A3728]/55">Datas passadas permanecem no histórico, mas não ficam disponíveis para reserva.</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-[#F5F2ED] px-3 py-1 text-xs font-bold text-[#4A3728]">{dates.length}</span>
+          </div>
             {loading ? (
               <div className="p-20 flex flex-col items-center justify-center">
                 <Loader2 className="w-10 h-10 text-[#4A3728]/20 animate-spin mb-4" />
@@ -227,18 +240,21 @@ export default function SpecialDatesManager() {
             ) : dates.length === 0 ? (
               <div className="p-20 text-center">
                 <CalendarDays size={40} className="mx-auto text-[#4A3728]/10 mb-4" />
-                <p className="text-sm font-bold text-[#4A3728]/40">Nenhuma data especial configurada.</p>
+                <p className="text-sm font-bold text-[#4A3728]/40">Nenhuma próxima data especial.</p>
               </div>
             ) : (
               <div className="divide-y divide-[#D9CFC1]/40">
                 {dates.map((d) => (
                   <React.Fragment key={d.id}>
-                    <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-[#FDFBF7] transition-colors group">
-                      <div className="flex flex-col gap-1.5 w-full md:w-auto">
-                        <div className="font-bold text-base text-[#4A3728]">
+                    <div className="p-4 md:p-5 grid grid-cols-1 sm:grid-cols-[auto_minmax(0,1fr)_auto] items-start sm:items-center gap-4 hover:bg-[#FDFBF7] transition-colors">
+                      <div className="rounded-2xl bg-[#F5F2ED] px-4 py-3 text-center sm:min-w-28">
+                        <div className="font-bold text-base text-[#4A3728] whitespace-nowrap">
                           {format(parseISO(d.date), 'dd/MM/yyyy')}
                         </div>
-                        <div className="text-[#4A3728]/80 text-sm font-medium">
+                        <div className="mt-1 text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/45">Evento</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[#4A3728] text-sm font-semibold break-words">
                           {d.description || '-'}
                           {d.included_guests ? ` • ${d.included_guests} pessoas` : ''}
                         </div>
@@ -254,18 +270,17 @@ export default function SpecialDatesManager() {
                           )}
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-2 mt-2 md:mt-0 w-full md:w-auto justify-end">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => startEdit(d)}
-                          className="flex-1 md:flex-none px-3 py-2.5 md:py-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE6DD] rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
+                          className="flex-1 sm:flex-none px-3 py-2.5 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE6DD] rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
                           title="Editar"
                         >
                           <Pencil size={14} /> Editar
                         </button>
                         <button 
                           onClick={() => handleDelete(d.id)}
-                          className="flex-1 md:flex-none px-3 py-2.5 md:py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
+                          className="flex-1 sm:flex-none px-3 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
                           title="Remover"
                         >
                           <Trash2 size={14} /> Apagar
@@ -364,7 +379,6 @@ export default function SpecialDatesManager() {
                 ))}
               </div>
             )}
-          </div>
         </div>
       </div>
     </div>

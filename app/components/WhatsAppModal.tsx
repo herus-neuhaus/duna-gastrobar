@@ -33,7 +33,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [undoTimeout, setUndoTimeout] = useState<NodeJS.Timeout | null>(null);
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
 
   const fetchTemplates = React.useCallback(async () => {
     setLoading(true);
@@ -50,7 +50,11 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
 
   useEffect(() => {
     if (isOpen) {
-      fetchTemplates();
+      const timeout = window.setTimeout(() => {
+        void fetchTemplates();
+      }, 0);
+
+      return () => window.clearTimeout(timeout);
     }
   }, [isOpen, fetchTemplates]);
 

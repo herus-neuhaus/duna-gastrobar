@@ -15,7 +15,11 @@ import {
   AlertCircle, 
   Loader2, 
   ChevronDown,
-  CalendarDays
+  CalendarDays,
+  Printer,
+  CalendarPlus,
+  CalendarOff,
+  TableProperties
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useSearchParams } from 'next/navigation';
@@ -38,18 +42,26 @@ import BlockedDatesManager from './BlockedDatesManager';
 import FuncionariosManager from './FuncionariosManager';
 import TarefasManager from './TarefasManager';
 import ProdutividadeDashboard from './ProdutividadeDashboard';
+import DecorationsManager from './DecorationsManager';
+import RestaurantManager from './RestaurantManager';
+import ReservationTableAllocator from './ReservationTableAllocator';
+import OperationsDashboard from './OperationsDashboard';
 
 type Reservation = Database['public']['Tables']['reservations']['Row'];
-type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+type ReservationStatus = 'confirmed' | 'cancelled' | 'seated' | 'completed' | 'no_show';
+type Decoration = Pick<Database['public']['Tables']['decorations']['Row'], 'id' | 'name' | 'image_url'>;
+type SpecialDate = Pick<Database['public']['Tables']['special_dates']['Row'], 'id' | 'date' | 'description' | 'requires_fee' | 'fee_amount' | 'included_guests'>;
 
 function ReservationsView() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [decorations, setDecorations] = useState<Decoration[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
   // WhatsApp Modal State
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [allocatingReservationId, setAllocatingReservationId] = useState<string | null>(null);
   
   // Date states
   const [startDate, setStartDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
@@ -57,7 +69,7 @@ function ReservationsView() {
   const [quickFilter, setQuickFilter] = useState('Hoje');
   const [showDatePicker, setShowDatePicker] = useState(false);
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
   const datePickerRef = useRef<HTMLDivElement>(null);
 
   const fetchReservations = React.useCallback(async (silent = false) => {
@@ -79,7 +91,11 @@ function ReservationsView() {
   }, [supabase, startDate, endDate]);
 
   useEffect(() => {
-    fetchReservations();
+    const timeout = window.setTimeout(() => {
+      void fetchReservations();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [fetchReservations]);
 
   useEffect(() => {
@@ -91,6 +107,29 @@ function ReservationsView() {
 
     return () => window.clearInterval(interval);
   }, [fetchReservations]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('reservations-monitor')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        void fetchReservations(true);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchReservations, supabase]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetch('/api/admin/decorations', { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : { decorations: [] })
+        .then((result) => setDecorations(result.decorations || []));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   // Close date picker when clicking outside
   useEffect(() => {
@@ -104,15 +143,23 @@ function ReservationsView() {
   }, []);
 
   const updateStatus = async (id: string, newStatus: ReservationStatus) => {
-    const { error } = await supabase
-      .from('reservations')
-      .update({ status: newStatus })
-      .eq('id', id);
+    try {
+      const response = await fetch(`/api/reservations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : newStatus === 'seated' ? 'seat' : newStatus === 'completed' ? 'complete' : 'no_show',
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível atualizar a reserva.');
 
-    if (error) {
-      alert('Erro ao atualizar status: ' + error.message);
-    } else {
-      setReservations(reservations.map(res => res.id === id ? { ...res, status: newStatus } : res));
+      setReservations((currentReservations) => currentReservations.map((reservation) => (
+        reservation.id === id ? { ...reservation, status: newStatus } : reservation
+      )));
+      await fetchReservations(true);
+    } catch (error) {
+      alert('Erro ao atualizar status: ' + (error instanceof Error ? error.message : 'Tente novamente.'));
     }
   };
 
@@ -151,14 +198,16 @@ function ReservationsView() {
     setShowDatePicker(false);
   };
 
-  const totalReservations = reservations.length;
   const activeReservations = reservations.filter(r => {
     const s = (r.status || 'pending').toLowerCase();
     return s !== 'cancelled' && s !== 'cancelado';
   });
+  const totalReservations = activeReservations.length;
   
   const totalGuests = activeReservations.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
-  const pendingPayments = activeReservations.filter(r => r.num_guests && r.num_guests >= 15 && r.payment_status === 'pending').length;
+  const pendingReservations = activeReservations.filter((reservation) => (
+    (reservation.status || 'pending').toLowerCase() === 'pending'
+  )).length;
 
   const filteredReservations = reservations.filter(res => {
     const matchesSearch = res.name.toLowerCase().includes(searchTerm.toLowerCase()) || res.whatsapp.includes(searchTerm);
@@ -166,19 +215,33 @@ function ReservationsView() {
   });
 
   const getStatusBadge = (status: string | null) => {
-    switch (status) {
+    switch ((status || 'pending').toLowerCase()) {
       case 'confirmed':
         return <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-green-200">Confirmado</span>;
       case 'pending':
         return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">Pendente</span>;
       case 'cancelled':
+      case 'cancelado':
         return <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-red-200">Cancelado</span>;
       case 'completed':
         return <span className="px-2.5 py-1 bg-[#EBE3D5] text-[#4A3728] rounded-md text-[10px] font-bold uppercase tracking-wider border border-[#D9CFC1]">Concluído</span>;
+      case 'seated':
+        return <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-200">Em atendimento</span>;
+      case 'no_show':
+        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">Não compareceu</span>;
       default:
         return <span className="px-2.5 py-1 bg-gray-100 text-gray-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-gray-200">{status}</span>;
     }
   };
+
+  const canConfirm = (status: string | null) => (status || 'pending').toLowerCase() === 'pending';
+  const canCancel = (status: string | null) => {
+    const normalizedStatus = (status || 'pending').toLowerCase();
+    return normalizedStatus === 'pending' || normalizedStatus === 'confirmed';
+  };
+  const canSeat = (status: string | null) => (status || 'pending').toLowerCase() === 'confirmed';
+  const canComplete = (status: string | null) => (status || 'pending').toLowerCase() === 'seated';
+  const getDecoration = (decorationId: string | null) => decorations.find((decoration) => decoration.id === decorationId);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -259,6 +322,13 @@ function ReservationsView() {
             className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-sm shadow-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] placeholder:text-[#4A3728]/30 transition-all"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="flex items-center justify-center gap-2 rounded-2xl border border-[#D9CFC1] bg-white px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-[#4A3728] shadow-sm transition-colors hover:bg-[#F5F2ED]"
+        >
+          <Printer size={16} /> Exportar PDF
+        </button>
       </div>
 
       {/* KPIs */}
@@ -266,7 +336,7 @@ function ReservationsView() {
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
           <div className="w-12 h-12 flex items-center justify-center bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><CalendarIcon size={20} strokeWidth={2.5} /></div>
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Reservas</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Reservas Ativas</p>
             <p className="text-2xl font-bold">{loading ? '...' : totalReservations}</p>
           </div>
         </div>
@@ -300,14 +370,14 @@ function ReservationsView() {
             </div>
         </div>
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingPayments > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>
+          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingReservations > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>
             <DollarSign size={20} strokeWidth={2.5} />
           </div>
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pendentes (15+)</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pendentes</p>
             <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold">{loading ? '...' : pendingPayments}</p>
-              {pendingPayments > 0 && <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>}
+              <p className="text-2xl font-bold">{loading ? '...' : pendingReservations}</p>
+              {pendingReservations > 0 && <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>}
             </div>
           </div>
         </div>
@@ -352,6 +422,12 @@ function ReservationsView() {
                               {res.notes}
                             </div>
                           )}
+                          {getDecoration(res.decoration_id) && (
+                            <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-[#4A3728]">
+                              <img src={getDecoration(res.decoration_id)?.image_url} alt="" className="size-7 rounded-lg object-cover" />
+                              {getDecoration(res.decoration_id)?.name}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-5">
@@ -375,20 +451,30 @@ function ReservationsView() {
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                          <button 
+                          {canConfirm(res.status) && <button
                             onClick={() => updateStatus(res.id, 'confirmed')}
                             className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-xl border border-green-200 transition-colors"
                             title="Confirmar"
                           >
                             <CheckCircle size={18} />
-                          </button>
-                          <button 
+                          </button>}
+                          {canCancel(res.status) && <button
                             onClick={() => updateStatus(res.id, 'cancelled')}
                             className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-colors"
                             title="Cancelar"
                           >
                             <XCircle size={18} />
-                          </button>
+                          </button>}
+                          {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'seated')} className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors" title="Registrar chegada">
+                            <Users size={18} />
+                          </button>}
+                          {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'no_show')} className="p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 transition-colors" title="Não compareceu">
+                            <CalendarOff size={18} />
+                          </button>}
+                          {canComplete(res.status) && <button onClick={() => updateStatus(res.id, 'completed')} className="p-2 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors" title="Finalizar">
+                            <CheckCircle size={18} />
+                          </button>}
+                          <button onClick={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)} className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors" title="Alocar mesas"><TableProperties size={18} /></button>
                           <button 
                             onClick={() => openWhatsAppModal(res)}
                             className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors"
@@ -403,6 +489,7 @@ function ReservationsView() {
                 </tbody>
               </table>
             </div>
+            {allocatingReservationId && <ReservationTableAllocator reservationId={allocatingReservationId} onSaved={() => void fetchReservations(true)} />}
 
             {/* Mobile View (Cards) */}
             <div className="lg:hidden space-y-4">
@@ -445,22 +532,38 @@ function ReservationsView() {
                       <p className="text-[11px] leading-relaxed text-amber-900">{res.notes}</p>
                     </div>
                   )}
+                  {getDecoration(res.decoration_id) && (
+                    <div className="mb-4 flex items-center gap-2 rounded-2xl bg-[#F5F2ED] p-3 text-[11px] font-bold text-[#4A3728]">
+                      <img src={getDecoration(res.decoration_id)?.image_url} alt="" className="size-9 rounded-xl object-cover" />
+                      {getDecoration(res.decoration_id)?.name}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-2">
-                    <button 
+                    {canConfirm(res.status) && <button
                       onClick={() => updateStatus(res.id, 'confirmed')}
                       className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-green-50 text-green-700 border border-green-100 active:scale-95 transition-all"
                     >
                       <CheckCircle size={18} />
                       <span className="text-[9px] font-bold uppercase">Confirmar</span>
-                    </button>
-                    <button 
+                    </button>}
+                    {canCancel(res.status) && <button
                       onClick={() => updateStatus(res.id, 'cancelled')}
                       className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-red-50 text-red-700 border border-red-100 active:scale-95 transition-all"
                     >
                       <XCircle size={18} />
                       <span className="text-[9px] font-bold uppercase">Cancelar</span>
-                    </button>
+                    </button>}
+                    {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'seated')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 active:scale-95 transition-all">
+                      <Users size={18} /><span className="text-[9px] font-bold uppercase">Chegou</span>
+                    </button>}
+                    {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'no_show')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-amber-50 text-amber-700 border border-amber-100 active:scale-95 transition-all">
+                      <CalendarOff size={18} /><span className="text-[9px] font-bold uppercase">No-show</span>
+                    </button>}
+                    {canComplete(res.status) && <button onClick={() => updateStatus(res.id, 'completed')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 active:scale-95 transition-all">
+                      <CheckCircle size={18} /><span className="text-[9px] font-bold uppercase">Finalizar</span>
+                    </button>}
+                    <button onClick={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"><TableProperties size={18} /><span className="text-[9px] font-bold uppercase">Mesas</span></button>
                     <button 
                       onClick={() => openWhatsAppModal(res)}
                       className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"
@@ -469,6 +572,7 @@ function ReservationsView() {
                       <span className="text-[9px] font-bold uppercase">WhatsApp</span>
                     </button>
                   </div>
+                  {allocatingReservationId === res.id && <ReservationTableAllocator reservationId={res.id} onSaved={() => void fetchReservations(true)} />}
                 </div>
               ))}
             </div>
@@ -486,6 +590,173 @@ function ReservationsView() {
   );
 }
 
+function NewReservationView() {
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    whatsapp: '',
+    cpf: '',
+    date: format(startOfTomorrow(), 'yyyy-MM-dd'),
+    time: '19:00',
+    guests: '2',
+    notes: '',
+    decorationId: '',
+    specialDateId: '',
+  });
+  const [decorations, setDecorations] = useState<Decoration[]>([]);
+  const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const guests = Number(form.guests);
+  const selectedSpecialDate = specialDates.find((specialDate) => specialDate.id === form.specialDateId);
+  const requiresPayment = guests >= 15 || Boolean(selectedSpecialDate?.requires_fee);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetch('/api/admin/decorations', { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : { decorations: [] })
+        .then((result) => setDecorations(result.decorations || []));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadSpecialDates = async () => {
+      try {
+        const response = await fetch(`/api/reservations/availability?from=${form.date}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        const datesForSelection = (result.specialDates || []).filter((specialDate: SpecialDate) => specialDate.date === form.date);
+        setSpecialDates(datesForSelection);
+        setForm((currentForm) => ({
+          ...currentForm,
+          specialDateId: datesForSelection.length === 1
+            ? datesForSelection[0].id
+            : datesForSelection.some((specialDate: SpecialDate) => specialDate.id === currentForm.specialDateId)
+              ? currentForm.specialDateId
+              : '',
+        }));
+      } catch (error) {
+        if (!controller.signal.aborted) setSpecialDates([]);
+      }
+    };
+
+    void loadSpecialDates();
+    return () => controller.abort();
+  }, [form.date]);
+
+  const updateField = (field: keyof typeof form, value: string) => {
+    setForm((currentForm) => ({ ...currentForm, [field]: value }));
+    setMessage('');
+  };
+
+  const createReservation = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          whatsapp: form.whatsapp,
+          cpf: form.cpf,
+          date: form.date,
+          time: form.time,
+          guests,
+          notes: form.notes,
+          decorationId: form.decorationId || null,
+          specialDateId: form.specialDateId || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível criar a reserva.');
+
+      setMessage('Reserva criada como pendente e disponível no monitor.');
+      setForm((currentForm) => ({ ...currentForm, name: '', email: '', whatsapp: '', cpf: '', notes: '', decorationId: '', specialDateId: currentForm.specialDateId }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível criar a reserva.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl rounded-3xl border border-[#D9CFC1] bg-white p-6 shadow-sm lg:p-8">
+      <div className="mb-7 flex items-start gap-4">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#F5F2ED] text-[#4A3728]"><CalendarPlus size={22} /></div>
+        <div>
+          <h3 className="font-serif text-xl font-bold text-[#4A3728]">Criar reserva</h3>
+          <p className="mt-1 text-xs leading-relaxed text-[#4A3728]/60">Registre uma reserva feita presencialmente ou pelo WhatsApp. As mesmas regras de disponibilidade e capacidade do site são aplicadas.</p>
+        </div>
+      </div>
+
+      <form onSubmit={createReservation} className="grid gap-4 sm:grid-cols-2">
+        <label className="sm:col-span-2">
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Cliente</span>
+          <input required value={form.name} onChange={(event) => updateField('name', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Nome completo" />
+        </label>
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">WhatsApp</span>
+          <input required type="tel" value={form.whatsapp} onChange={(event) => updateField('whatsapp', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="(69) 99999-9999" />
+        </label>
+        {specialDates.length > 0 && <label className="sm:col-span-2">
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Evento especial</span>
+          <select value={form.specialDateId} onChange={(event) => updateField('specialDateId', event.target.value)} required={specialDates.length > 1} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]">
+            {specialDates.length > 1 && <option value="">Selecione o evento</option>}
+            {specialDates.map((specialDate) => <option key={specialDate.id} value={specialDate.id}>{specialDate.description || 'Evento especial'}{specialDate.included_guests ? ` (${specialDate.included_guests} pessoas)` : ''}{specialDate.requires_fee ? ` - Taxa R$ ${Number(specialDate.fee_amount || 0).toFixed(2)}` : ''}</option>)}
+          </select>
+        </label>}
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">E-mail</span>
+          <input required type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="cliente@email.com" />
+        </label>
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Data</span>
+          <input required type="date" value={form.date} onChange={(event) => updateField('date', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+        </label>
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Horário</span>
+          <input required type="time" value={form.time} onChange={(event) => updateField('time', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+        </label>
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Pessoas</span>
+          <input required type="number" min="1" max="30" value={form.guests} onChange={(event) => updateField('guests', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+        </label>
+        {requiresPayment && <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">CPF para PIX</span>
+          <input required value={form.cpf} onChange={(event) => updateField('cpf', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="000.000.000-00" />
+        </label>}
+        <label className="sm:col-span-2">
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Ocasião ou observação</span>
+          <textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} maxLength={1000} className="min-h-24 w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Ex.: Aniversário" />
+        </label>
+        {decorations.length > 0 && <label className="sm:col-span-2">
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Decoração</span>
+          <select value={form.decorationId} onChange={(event) => updateField('decorationId', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]">
+            <option value="">Sem decoração</option>
+            {decorations.map((decoration) => <option key={decoration.id} value={decoration.id}>{decoration.name}</option>)}
+          </select>
+        </label>}
+        {message && <p className={`sm:col-span-2 rounded-xl px-4 py-3 text-sm ${message.startsWith('Reserva criada') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{message}</p>}
+        <button disabled={isSubmitting} className="sm:col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-[#4A3728] px-5 py-4 text-xs font-bold uppercase tracking-widest text-white transition-opacity disabled:opacity-50">
+          {isSubmitting && <Loader2 className="animate-spin" size={16} />} Criar reserva pendente
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function AdminDashboardContent() {
   const searchParams = useSearchParams();
   const view = searchParams.get('view') || 'reservations';
@@ -494,7 +765,9 @@ function AdminDashboardContent() {
     <AdminLayoutShell activeItem={view}>
       <header className="p-6 lg:p-10 pb-0 flex flex-col gap-2">
         <h2 className="text-3xl font-serif font-bold uppercase tracking-tight text-[#4A3728]">
-          {view === 'reservations' && 'Monitor de Reservas'}
+           {view === 'reservations' && 'Monitor de Reservas'}
+           {view === 'new_reservation' && 'Criar Reserva'}
+           {view === 'decorations' && 'Espaços & Decorações'}
           {view === 'special_dates' && 'Gestão de Datas Especiais'}
           {view === 'blocked_dates' && 'Datas Bloqueadas'}
           {view === 'funcionarios' && 'Gestão de Equipe'}
@@ -502,7 +775,9 @@ function AdminDashboardContent() {
           {view === 'produtividade' && 'Painel de Produtividade'}
         </h2>
         <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/50">
-          {view === 'reservations' && 'Acompanhe as reservas do dia'}
+           {view === 'reservations' && 'Acompanhe as reservas do dia'}
+           {view === 'new_reservation' && 'Registre reservas feitas diretamente pela equipe'}
+           {view === 'decorations' && 'Cadastre mesas, espaços e decorações disponíveis para os clientes'}
           {view === 'special_dates' && 'Configure datas com taxas de reserva antecipadas'}
           {view === 'blocked_dates' && 'Bloqueie reservas para datas específicas'}
           {view === 'funcionarios' && 'Gerencie funcionários e cargos'}
@@ -511,7 +786,11 @@ function AdminDashboardContent() {
         </p>
       </header>
       <div className="p-6 lg:p-10">
-        {view === 'reservations' && <ReservationsView />}
+         {view === 'reservations' && <ReservationsView />}
+         {view === 'new_reservation' && <NewReservationView />}
+         {view === 'decorations' && <DecorationsManager />}
+         {view === 'restaurant' && <RestaurantManager />}
+         {view === 'operations' && <OperationsDashboard />}
         {view === 'special_dates' && <SpecialDatesManager />}
         {view === 'blocked_dates' && <BlockedDatesManager />}
         {view === 'funcionarios' && <FuncionariosManager />}

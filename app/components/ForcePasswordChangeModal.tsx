@@ -1,28 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Lock, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface ForcePasswordChangeModalProps {
-  userId: string;
   onSuccess: () => void;
 }
 
-export default function ForcePasswordChangeModal({ userId, onSuccess }: ForcePasswordChangeModalProps) {
+export default function ForcePasswordChangeModal({ onSuccess }: ForcePasswordChangeModalProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const supabase = createClient();
-  const router = useRouter();
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) {
-      setError('A senha deve ter no mínimo 6 caracteres.');
+    if (password.length < 12) {
+      setError('A senha deve ter no mínimo 12 caracteres.');
       return;
     }
     if (password !== confirmPassword) {
@@ -33,27 +27,16 @@ export default function ForcePasswordChangeModal({ userId, onSuccess }: ForcePas
     setLoading(true);
     setError('');
 
-    // Update auth password
-    const { error: authError } = await supabase.auth.updateUser({
-      password: password
+    const response = await fetch('/api/account/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
     });
-
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Update profile
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ force_password_change: false })
-      .eq('id', userId);
-
-    if (profileError) {
-      setError(profileError.message);
-    } else {
+    const result = await response.json();
+    if (response.ok) {
       onSuccess();
+    } else {
+      setError(result.error || 'Não foi possível atualizar a senha.');
     }
     
     setLoading(false);

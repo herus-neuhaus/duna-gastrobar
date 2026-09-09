@@ -34,37 +34,42 @@ export async function POST(request: Request) {
     const order = await pagarmeRequest<PagarmeOrder>(`/orders/${encodeURIComponent(orderId)}`);
     const reservationId = order.metadata?.reservation_id;
 
-    if (
-      order.status !== 'paid' ||
-      order.amount !== 10000 ||
-      order.metadata?.purpose !== 'group_reservation_fee' ||
-      !reservationId
-    ) {
+    if (order.status !== 'paid' || !['reservation_fee', 'group_reservation_fee'].includes(order.metadata?.purpose || '') || !reservationId) {
       return NextResponse.json({ error: 'Pagamento não confirmado.' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
     const { data: reservation, error: reservationError } = await supabase
       .from('reservations')
-      .select('status, num_guests')
+      .select('payment_amount, payment_status')
       .eq('id', reservationId)
       .single();
 
-    if (reservationError || !reservation || reservation.num_guests < 15) {
-      return NextResponse.json({ error: 'Reserva de grupo não encontrada.' }, { status: 404 });
+    const paymentAmount = Number(reservation?.payment_amount || 0);
+    if (reservationError || !reservation || reservation.payment_status !== 'pending' || paymentAmount <= 0 || order.amount !== Math.round(paymentAmount * 100)) {
+      return NextResponse.json({ error: 'Pagamento não confirmado.' }, { status: 400 });
     }
 
-    const currentStatus = (reservation.status || 'pending').toLowerCase();
-    const wasCancelled = currentStatus === 'cancelled' || currentStatus === 'cancelado';
-    const { error } = await supabase
-      .from('reservations')
-      .update({
-        payment_status: 'paid',
-        ...(wasCancelled ? {} : { status: 'confirmed' }),
-      })
-      .eq('id', reservationId);
+    const { error: paymentError } = await supabase
+      .from('reservation_payments')
+      .upsert({
+        reservation_id: reservationId,
+        provider: 'pagarme',
+        provider_order_id: order.id,
+        method: 'pix',
+        status: 'paid',
+        amount: paymentAmount,
+        paid_at: new Date().toISOString(),
+      }, { onConflict: 'provider,provider_order_id' });
+    if (paymentError) throw paymentError;
+
+    const { data, error } = await supabase.rpc('complete_reservation_payment', {
+      p_reservation_id: reservationId,
+      p_payment_amount: paymentAmount,
+    });
 
     if (error) throw error;
+    if (!data?.[0]) return NextResponse.json({ received: true });
 
     return NextResponse.json({ received: true });
   } catch (error) {

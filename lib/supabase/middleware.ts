@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getProtectedRouteRedirect } from '@/lib/route-access'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -50,41 +51,10 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-  const isAdminPage = request.nextUrl.pathname.startsWith('/admin')
-  const isEmployeePage = request.nextUrl.pathname.startsWith('/funcionario')
-
-  // Redireciona admins ou bloqueia acesso de quem não está logado na área admin
-  if (isAdminPage) {
-    if (!user) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      return NextResponse.redirect(url)
-    } else if (userRole === 'employee') {
-      // Funcionários não podem acessar a aba admin, vão pro checklist
-      const url = request.nextUrl.clone()
-      url.pathname = '/funcionario/checklist'
-      return NextResponse.redirect(url)
-    }
-  }
-
-  // Redireciona para login se tentar acessar /funcionario deslogado
-  if (isEmployeePage) {
-    if (!user) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      return NextResponse.redirect(url)
-    }
-  }
-
-  // Ao acessar /login, se já logado, redireciona para a página correta
-  if (isLoginPage && user) {
+  const redirectPath = getProtectedRouteRedirect(request.nextUrl.pathname, user ? userRole : null);
+  if (redirectPath) {
     const url = request.nextUrl.clone()
-    if (userRole === 'employee') {
-      url.pathname = '/funcionario/checklist'
-    } else {
-      url.pathname = '/admin'
-    }
+    url.pathname = redirectPath
     return NextResponse.redirect(url)
   }
 

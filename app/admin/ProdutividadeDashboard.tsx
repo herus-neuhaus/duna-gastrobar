@@ -20,7 +20,7 @@ export default function ProdutividadeDashboard() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
 
   const fetchDashboard = React.useCallback(async () => {
     setLoading(true);
@@ -42,7 +42,11 @@ export default function ProdutividadeDashboard() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchDashboard();
+    const timeout = window.setTimeout(() => {
+      void fetchDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [fetchDashboard]);
 
   const handleApprove = async (completionId: string) => {

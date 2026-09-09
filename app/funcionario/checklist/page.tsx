@@ -36,38 +36,10 @@ export default function ChecklistPage() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
   const router = useRouter();
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('job_role_id, force_password_change, full_name')
-        .eq('id', user.id)
-        .single();
-
-      setUserId(user.id);
-      if (profile) {
-        setUserRole(profile.job_role_id);
-        setUserName(profile.full_name);
-        if (profile.force_password_change) {
-          setForcePasswordChange(true);
-        }
-      }
-      
-      await fetchTasks(user.id, profile?.job_role_id);
-    };
-    init();
-  }, [supabase, router]);
-
-  const fetchTasks = async (uid: string, roleId?: string | null) => {
+  const fetchTasks = React.useCallback(async (uid: string, roleId?: string | null) => {
     setLoading(true);
     const today = format(new Date(), 'yyyy-MM-dd');
     
@@ -115,7 +87,39 @@ export default function ChecklistPage() {
       setTasks(finalTasks);
     }
     setLoading(false);
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('job_role_id, force_password_change, full_name')
+        .eq('id', user.id)
+        .single();
+
+      setUserId(user.id);
+      if (profile) {
+        setUserRole(profile.job_role_id);
+        setUserName(profile.full_name);
+        if (profile.force_password_change) {
+          setForcePasswordChange(true);
+        }
+      }
+
+      await fetchTasks(user.id, profile?.job_role_id);
+    };
+    const timeout = window.setTimeout(() => {
+      void init();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [fetchTasks, router, supabase]);
 
   const startTask = async (taskId: string) => {
     if (!userId) return;
@@ -186,7 +190,6 @@ export default function ChecklistPage() {
     <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col">
       {forcePasswordChange && userId && (
         <ForcePasswordChangeModal 
-          userId={userId} 
           onSuccess={() => setForcePasswordChange(false)} 
         />
       )}

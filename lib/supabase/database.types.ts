@@ -116,6 +116,7 @@ export type Database = {
           cpf: string | null
           created_at: string
           customer_id: string | null
+          decoration_id: string | null
           email: string
           expires_at: string | null
           id: string
@@ -126,7 +127,9 @@ export type Database = {
           payment_amount: number | null
           payment_status: string | null
           reservation_date: string
+          reservation_access_token_hash: string | null
           reservation_time: string
+          special_date_id: string | null
           status: string | null
           type: string | null
           updated_at: string
@@ -138,6 +141,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           customer_id?: string | null
+          decoration_id?: string | null
           email: string
           expires_at?: string | null
           id?: string
@@ -148,7 +152,9 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string | null
           reservation_date: string
+          reservation_access_token_hash?: string | null
           reservation_time: string
+          special_date_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string
@@ -160,6 +166,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string
           customer_id?: string | null
+          decoration_id?: string | null
           email?: string
           expires_at?: string | null
           id?: string
@@ -170,13 +177,29 @@ export type Database = {
           payment_amount?: number | null
           payment_status?: string | null
           reservation_date?: string
+          reservation_access_token_hash?: string | null
           reservation_time?: string
+          special_date_id?: string | null
           status?: string | null
           type?: string | null
           updated_at?: string
           whatsapp?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "reservations_special_date_id_fkey"
+            columns: ["special_date_id"]
+            isOneToOne: false
+            referencedRelation: "special_dates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservations_decoration_id_fkey"
+            columns: ["decoration_id"]
+            isOneToOne: false
+            referencedRelation: "decorations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reservations_customer_id_fkey"
             columns: ["customer_id"]
@@ -185,6 +208,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      decorations: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          image_path: string
+          image_url: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image_path: string
+          image_url: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image_path?: string
+          image_url?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       special_dates: {
         Row: {
@@ -419,7 +472,51 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cancel_reservation_with_access_token: {
+        Args: { p_access_token_hash: string; p_reservation_id: string }
+        Returns: { id: string; status: string }[]
+      }
+      complete_reservation_payment: {
+        Args: { p_payment_amount: number; p_reservation_id: string }
+        Returns: { id: string; payment_status: string; status: string }[]
+      }
+      complete_reservation_access_recovery: {
+        Args: { p_access_tokens: Json; p_challenge_id: string; p_code_hash: string; p_email_hash: string }
+        Returns: { id: string }[]
+      }
+      create_reservation_recovery_challenge: {
+        Args: { p_code_hash: string; p_email_hash: string; p_reservation_ids: string[] }
+        Returns: string
+      }
+      get_reservation_available_times: {
+        Args: { p_from: string; p_to: string }
+        Returns: { reservation_date: string; reservation_time: string }[]
+      }
+      get_reservation_with_access_token: {
+        Args: { p_access_token_hash: string; p_reservation_id: string }
+        Returns: {
+          id: string
+          num_guests: number
+          payment_amount: number
+          payment_status: string
+          reservation_date: string
+          reservation_time: string
+          status: string
+        }[]
+      }
       release_expired_reservations: { Args: never; Returns: undefined }
+      transition_reservation_status: {
+        Args: { p_expected_statuses: string[]; p_next_status: string; p_reservation_id: string }
+        Returns: { id: string; status: string }[]
+      }
+      reservation_time_is_available: {
+        Args: { p_reservation_date: string; p_reservation_time: string }
+        Returns: boolean
+      }
+      update_reservation_with_access_token: {
+        Args: { p_access_token_hash: string; p_num_guests: number; p_reservation_date: string; p_reservation_id: string; p_reservation_time: string }
+        Returns: { id: string; num_guests: number; reservation_date: string; reservation_time: string; status: string }[]
+      }
     }
     Enums: {
       [_ in never]: never

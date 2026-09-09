@@ -9,7 +9,10 @@ import {
   LogOut,
   Loader2,
   CalendarDays,
-  CalendarOff
+  CalendarOff,
+  CalendarPlus,
+  ImagePlus
+  ,TableProperties
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -68,10 +71,9 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col lg:flex-row overflow-hidden">
+    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col lg:flex-row">
       {forcePasswordChange && userId && (
         <ForcePasswordChangeModal 
-          userId={userId} 
           onSuccess={() => setForcePasswordChange(false)} 
         />
       )}
@@ -141,12 +143,34 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
         </div>
 
         <nav className="flex-1 px-4 space-y-2">
-          <Link 
+          <Link
             href="/admin?view=reservations"
             onClick={() => setIsMenuOpen(false)}
             className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'reservations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
           >
             <CalendarIcon size={18} /> Reservas
+          </Link>
+          <Link href="/admin?view=operations" onClick={() => setIsMenuOpen(false)} className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'operations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}>
+            <CalendarIcon size={18} /> Operação do dia
+          </Link>
+          <Link href="/admin?view=restaurant" onClick={() => setIsMenuOpen(false)} className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'restaurant' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}>
+            <TableProperties size={18} /> Áreas e mesas
+          </Link>
+
+          <Link
+            href="/admin?view=new_reservation"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'new_reservation' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <CalendarPlus size={18} /> Criar Reserva
+          </Link>
+
+          <Link
+            href="/admin?view=decorations"
+            onClick={() => setIsMenuOpen(false)}
+            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'decorations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+          >
+            <ImagePlus size={18} /> Espaços & Decorações
           </Link>
           
           <Link 
@@ -201,7 +225,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden pt-16 lg:pt-0 bg-[#FDFBF7]">
+      <main className="flex-1 flex min-h-screen flex-col overflow-x-hidden pt-16 lg:pt-0 bg-[#FDFBF7]">
         {children}
       </main>
     </div>

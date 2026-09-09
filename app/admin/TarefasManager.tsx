@@ -40,7 +40,7 @@ export default function TarefasManager() {
   const [savingTask, setSavingTask] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const [supabase] = useState(createClient);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -60,7 +60,11 @@ export default function TarefasManager() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchData();
+    const timeout = window.setTimeout(() => {
+      void fetchData();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [fetchData]);
 
   const handleCreateCategory = async (e: React.FormEvent) => {

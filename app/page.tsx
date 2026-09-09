@@ -4,9 +4,12 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, BookOpen, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+type ReservationCredential = { id: string; token: string; phone: string };
+
+const RESERVATION_CREDENTIALS_KEY = 'duna-reservation-credentials';
 
 export default function DunaGastrobarReservation() {
   // Dropdown Open States
@@ -27,6 +30,8 @@ export default function DunaGastrobarReservation() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [reservationId, setReservationId] = useState('');
+  const [reservationAccessToken, setReservationAccessToken] = useState('');
+  const [reservationPaymentAmount, setReservationPaymentAmount] = useState(0);
   const [pixPayment, setPixPayment] = useState<{
     orderId: string;
     qrCode: string;
@@ -42,8 +47,11 @@ export default function DunaGastrobarReservation() {
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
   const [allSpecialDates, setAllSpecialDates] = useState<any[]>([]);
   const [allBlockedDates, setAllBlockedDates] = useState<any[]>([]);
+  const [availableTimesByDate, setAvailableTimesByDate] = useState<Record<string, string[]>>({});
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
   const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
+  const [decorations, setDecorations] = useState<Array<{ id: string; name: string; image_url: string }>>([]);
+  const [decorationId, setDecorationId] = useState('');
   
   // States for "My Reservations"
   const [pageView, setPageView] = useState<'home' | 'reservation'>('home');
@@ -62,11 +70,30 @@ export default function DunaGastrobarReservation() {
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
   const [paymentCpf, setPaymentCpf] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recoveryChallengeId, setRecoveryChallengeId] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   
-  const supabase = createClient();
-
   const CAPACITY_LIMIT = 80;
   const WHATSAPP_NUMBER = "5569992564637";
+  const requiresPayment = (guests || 0) >= 15 || Boolean(specialDateInfo?.requires_fee);
+
+  const getStoredReservationCredentials = (): ReservationCredential[] => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(RESERVATION_CREDENTIALS_KEY) || '[]');
+      return Array.isArray(stored) ? stored.filter((item): item is ReservationCredential => (
+        typeof item?.id === 'string' && typeof item?.token === 'string' && typeof item?.phone === 'string'
+      )) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveReservationCredential = (credential: ReservationCredential) => {
+    const credentials = getStoredReservationCredentials().filter((item) => item.id !== credential.id);
+    window.localStorage.setItem(RESERVATION_CREDENTIALS_KEY, JSON.stringify([...credentials, credential]));
+  };
 
   // Formata a data em português com as primeiras letras maiúsculas
   const formatDisplayDate = (d: Date) => {
@@ -124,7 +151,7 @@ export default function DunaGastrobarReservation() {
       valid = false;
     }
 
-    if ((guests || 0) >= 15 && formData.cpf.replace(/\D/g, '').length !== 11) {
+    if (requiresPayment && formData.cpf.replace(/\D/g, '').length !== 11) {
       errors.cpf = 'Informe um CPF válido para gerar o PIX.';
       valid = false;
     }
@@ -134,22 +161,7 @@ export default function DunaGastrobarReservation() {
   };
 
   const getAvailableTimes = (selectedDate: string) => {
-    if (!selectedDate) return [];
-    
-    const dateObj = parse(selectedDate, 'yyyy-MM-dd', new Date());
-    const dayOfWeek = getDay(dateObj); // 0 = Domingo, 1 = Segunda, ...
-    
-    // Terça a quinta: 2, 3, 4
-    if (dayOfWeek >= 2 && dayOfWeek <= 4) {
-      return ['12:00', '12:30', '13:00', '13:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
-    }
-    
-    // Sexta a domingo: 5, 6, 0
-    if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
-      return ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00'];
-    }
-    
-    return []; // Segunda ou erro
+    return availableTimesByDate[selectedDate] || [];
   };
 
   const checkLeadTime = (selectedDate: string, selectedTime: string) => {
@@ -163,64 +175,62 @@ export default function DunaGastrobarReservation() {
   };
 
   const fetchCapacity = async (selectedDate: string) => {
-    const { data, error } = await supabase
-      .from('reservations')
-      .select('num_guests, status')
-      .eq('reservation_date', selectedDate);
-    
-    if (!error && data) {
-      const activeReservations = data.filter(r => {
-        const s = (r.status || 'pending').toLowerCase();
-        return s !== 'cancelled' && s !== 'cancelado';
-      });
-      
-      const total = activeReservations.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+    try {
+      const response = await fetch(`/api/reservations/availability?from=${selectedDate}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+
+      const total = result.totals?.[selectedDate] || 0;
       setTotalGuestsForDate(total);
       setCapacityError(total >= CAPACITY_LIMIT);
+    } catch {
+      setTotalGuestsForDate(0);
+      setCapacityError(false);
     }
   };
 
   const fetchFullDates = async () => {
-    const { data, error } = await supabase
-      .from('reservations')
-      .select('reservation_date, num_guests, status');
-    
-    if (!error && data) {
-      const dateTotals: Record<string, number> = {};
-      
-      data.forEach(res => {
-        const s = (res.status || 'pending').toLowerCase();
-        if (s !== 'cancelled' && s !== 'cancelado') {
-          dateTotals[res.reservation_date] = (dateTotals[res.reservation_date] || 0) + (res.num_guests || 0);
-        }
-      });
-      
-      const fullDates = Object.keys(dateTotals).filter(date => dateTotals[date] >= CAPACITY_LIMIT);
-      setFullyBookedDates(fullDates);
-    }
+    const firstDate = format(datesList[0], 'yyyy-MM-dd');
+    const lastDate = format(datesList[datesList.length - 1], 'yyyy-MM-dd');
+    try {
+      const response = await fetch(`/api/reservations/availability?from=${firstDate}&to=${lastDate}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
 
-    const { data: sdData } = await supabase.from('special_dates').select('*');
-    if (sdData) {
-      setAllSpecialDates(sdData);
-    }
-
-    const { data: bdData } = await supabase.from('blocked_dates').select('*');
-    if (bdData) {
-      setAllBlockedDates(bdData);
+      setFullyBookedDates(result.fullDates || []);
+      setAllSpecialDates(result.specialDates || []);
+      setAllBlockedDates(result.blockedDates || []);
+      setAvailableTimesByDate(result.availableTimes || {});
+    } catch {
+      setFullyBookedDates([]);
+      setAllSpecialDates([]);
+      setAllBlockedDates([]);
+      setAvailableTimesByDate({});
     }
   };
 
   useEffect(() => {
-    fetchFullDates();
+    const timeout = window.setTimeout(() => {
+      void fetchFullDates();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, []);
 
-  const fetchSpecialDate = async (selectedDate: string) => {
-    const { data, error } = await supabase
-      .from('special_dates')
-      .select('*')
-      .eq('date', selectedDate);
-    
-    if (!error && data && data.length > 0) {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetch('/api/decorations', { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : { decorations: [] })
+        .then((result) => setDecorations(result.decorations || []))
+        .catch(() => setDecorations([]));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  const fetchSpecialDate = (selectedDate: string) => {
+    const data = allSpecialDates.filter((specialDate) => specialDate.date === selectedDate);
+    if (data.length > 0) {
       setSpecialDatesOptions(data);
       setSpecialDateInfo(null);
     } else {
@@ -265,6 +275,8 @@ export default function DunaGastrobarReservation() {
     setFormErrors({ name: '', email: '', whatsapp: '', cpf: '' });
     setIsSuccess(false);
     setReservationId('');
+    setReservationAccessToken('');
+    setReservationPaymentAmount(0);
     setPixPayment(null);
     setPixError('');
     setPixCopied(false);
@@ -274,9 +286,10 @@ export default function DunaGastrobarReservation() {
     setPolicyAccepted(false);
     setSpecialDateInfo(null);
     setSpecialDatesOptions([]);
+    setDecorationId('');
   };
 
-  const createPixPayment = async (id: string, cpf = formData.cpf) => {
+  const createPixPayment = async (id: string, accessToken = reservationAccessToken, cpf = formData.cpf) => {
     setIsCreatingPix(true);
     setPixError('');
 
@@ -284,7 +297,7 @@ export default function DunaGastrobarReservation() {
       const response = await fetch('/api/payments/pix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reservationId: id, cpf }),
+        body: JSON.stringify({ reservationId: id, accessToken, cpf }),
       });
       const data = await response.json();
 
@@ -318,6 +331,7 @@ export default function DunaGastrobarReservation() {
           guests: finalGuests,
           notes,
           specialDateId: specialDateInfo?.id || null,
+          decorationId: decorationId || null,
         }),
       });
       const result = await response.json();
@@ -328,14 +342,20 @@ export default function DunaGastrobarReservation() {
       }
 
       const createdId = result.id || '';
-      setReservationId(createdId);
+      const accessToken = typeof result.accessToken === 'string' ? result.accessToken : '';
+      if (!createdId || !accessToken) throw new Error('Não foi possível proteger o acesso à sua reserva.');
 
-      if (finalGuests >= 15 && createdId) {
-        await createPixPayment(createdId);
+      setReservationId(createdId);
+      setReservationAccessToken(accessToken);
+      setReservationPaymentAmount(Number(result.paymentAmount || 0));
+      saveReservationCredential({ id: createdId, token: accessToken, phone: formData.whatsapp.replace(/\D/g, '') });
+
+      if (result.paymentRequired) {
+        await createPixPayment(createdId, accessToken);
       }
 
       setIsSuccess(true);
-      if (finalGuests < 15 && !specialDateInfo?.requires_fee) {
+      if (!result.paymentRequired) {
         handleWhatsAppRedirect('success');
       }
     } catch (error) {
@@ -346,92 +366,125 @@ export default function DunaGastrobarReservation() {
   };
 
   const fetchUserReservations = async () => {
-    const cleanPhone = searchPhone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) return;
-    
     setIsSearching(true);
     setHasSearched(true);
     
-    const { data, error } = await supabase
-      .rpc('get_customer_reservations', { phone_param: cleanPhone });
-    
-    if (!error && data) {
-      setUserReservations(data);
-    } else {
-      console.error("Erro na busca:", error);
+    try {
+      const phone = searchPhone.replace(/\D/g, '');
+      const credentials = getStoredReservationCredentials().filter((credential) => !phone || credential.phone === phone);
+      const results = await Promise.all(credentials.map(async (credential) => {
+        const response = await fetch(`/api/reservations/${credential.id}`, {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${credential.token}` },
+        });
+        if (!response.ok) return null;
+        const result = await response.json();
+        return result.reservation || null;
+      }));
+      setUserReservations(results.filter(Boolean));
+    } catch (error) {
+      console.error('Erro na busca:', error);
       setUserReservations([]);
+    } finally {
+      setIsSearching(false);
     }
-    setIsSearching(false);
   };
 
   const handleCancelReservation = async () => {
     if (!reservationToCancel) return;
     
     setIsCancelling(true);
-    const { error } = await supabase
-      .from('reservations')
-      .update({ status: 'cancelled' })
-      .eq('id', reservationToCancel);
-    
-    if (!error) {
-      fetchUserReservations();
+    try {
+      const credential = getStoredReservationCredentials().find((item) => item.id === reservationToCancel);
+      if (!credential) throw new Error('O acesso seguro desta reserva não está disponível neste dispositivo.');
+
+      const response = await fetch(`/api/reservations/${reservationToCancel}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', accessToken: credential.token }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error || 'Não foi possível cancelar a reserva.');
+
+      setUserReservations((currentReservations) => currentReservations.map((reservation) => (
+        reservation.id === reservationToCancel ? { ...reservation, status: 'cancelled' } : reservation
+      )));
       setShowCancelModal(false);
       setReservationToCancel(null);
-    } else {
-      alert('Erro ao cancelar reserva: ' + error.message);
+    } catch (error) {
+      alert('Erro ao cancelar reserva: ' + (error instanceof Error ? error.message : 'Tente novamente.'));
+    } finally {
+      setIsCancelling(false);
     }
-    setIsCancelling(false);
   };
 
   const handleChangeQuantity = async (res: any) => {
     const newVal = parseInt(newQuantityValue);
-    if (!newQuantityValue || newVal <= 0) {
-      alert('Por favor, informe uma quantidade válida.');
-      return;
-    }
-    
-    const oldVal = res.num_guests;
-
-    const { error } = await supabase
-      .from('reservations')
-      .update({ 
-        num_guests: newVal, 
-        status: 'pending',
-        payment_status: (newVal >= 15 && res.payment_status === 'not_required') ? 'pending' : res.payment_status,
-        payment_amount: (newVal >= 15 && res.payment_amount === 0) ? 100 : res.payment_amount
-      })
-      .eq('id', res.id);
-
-    if (error) {
-      alert('Erro ao solicitar alteração: ' + error.message);
+    if (!newQuantityValue || newVal < 1 || newVal > 30) {
+      alert('Informe uma quantidade entre 1 e 30 pessoas.');
       return;
     }
 
-    fetchUserReservations();
-    
-    let paymentNote = "";
-    if (newVal >= 15 && oldVal < 15) {
-      paymentNote = "Baseado nas regras de grupo, essa alteração requer pagamento de taxa.";
-    } else if (newVal >= 15 && oldVal >= 15) {
-      paymentNote = "Já possuo uma reserva de grupo, alterando apenas a quantidade final.";
+    try {
+      const credential = getStoredReservationCredentials().find((item) => item.id === res.id);
+      if (!credential) throw new Error('O acesso seguro desta reserva não está disponível neste dispositivo.');
+      const response = await fetch(`/api/reservations/${res.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_details',
+          accessToken: credential.token,
+          date: res.reservation_date,
+          time: res.reservation_time.slice(0, 5),
+          guests: newVal,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível alterar a reserva.');
+      setUserReservations((current) => current.map((reservation) => reservation.id === res.id ? { ...reservation, ...result.reservation } : reservation));
+      setEditingQuantityId(null);
+      setNewQuantityValue('');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível alterar a reserva.');
     }
+  };
 
-    const paymentStatus = res.payment_status === 'paid' ? ' (Pagamento já realizado)' : '';
-    const message = `Olá, gostaria de solicitar uma alteração na minha reserva:\n\n*Data:* ${format(parse(res.reservation_date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}\n*Horário:* ${res.reservation_time}\n*Pessoas Atual:* ${oldVal}${paymentStatus}\n\n*Nova quantidade solicitada:* ${newVal}\n\n${paymentNote ? paymentNote + "\n\n" : ""}Fico no aguardo da confirmação de vocês. Obrigado!`;
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-    
-    if (newVal >= 15 && oldVal < 15) {
-      setPaymentModalData({ res, newVal, url });
-      setPaymentCpf('');
-      setPixPayment(null);
-      setPixError('');
-      setShowPaymentInfo(true);
-    } else {
-      window.open(url, '_blank');
+  const requestRecoveryCode = async () => {
+    setRecoveryMessage('');
+    try {
+      const response = await fetch('/api/reservations/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível solicitar o código.');
+      setRecoveryChallengeId(result.challengeId || '');
+      setRecoveryMessage('Se houver reservas ativas para este e-mail, enviamos um código de acesso.');
+    } catch (error) {
+      setRecoveryMessage(error instanceof Error ? error.message : 'Não foi possível solicitar o código.');
     }
-    
-    setEditingQuantityId(null);
-    setNewQuantityValue('');
+  };
+
+  const verifyRecoveryCode = async () => {
+    setRecoveryMessage('');
+    try {
+      const response = await fetch('/api/reservations/recovery', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail, code: recoveryCode, challengeId: recoveryChallengeId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Código inválido ou expirado.');
+      const phone = searchPhone.replace(/\D/g, '');
+      for (const credential of result.credentials || []) saveReservationCredential({ ...credential, phone });
+      setRecoveryCode('');
+      setRecoveryMessage('Acesso recuperado neste dispositivo. Use a busca para ver suas reservas.');
+      void fetchUserReservations();
+    } catch (error) {
+      setRecoveryMessage(error instanceof Error ? error.message : 'Não foi possível validar o código.');
+    }
   };
 
   const formatPhoneNumber = (value: string) => {
@@ -452,8 +505,7 @@ export default function DunaGastrobarReservation() {
   };
 
   const getConfirmationText = () => {
-    const finalGuests = guests || 0;
-    if (finalGuests >= 15 || specialDateInfo?.requires_fee) return "Reservar e Pagar";
+    if (requiresPayment) return "Reservar e Pagar";
     return "Confirmar Reserva";
   };
 
@@ -471,18 +523,18 @@ export default function DunaGastrobarReservation() {
           </div>
           <h1 className="text-3xl font-serif font-bold mb-2">Reserva solicitada!</h1>
           <p className="text-sm opacity-70 mb-8">
-            {(guests || 0) >= 15
-              ? 'Sua mesa foi registrada. Conclua o pagamento PIX para confirmar a reserva de grupo.'
+            {requiresPayment
+              ? 'Sua mesa foi registrada. Conclua o pagamento PIX para confirmar a reserva.'
               : 'Recebemos seu pedido. Confirme os detalhes com nossa equipe pelo WhatsApp.'}
           </p>
 
-          {(guests || 0) >= 15 && (
+          {requiresPayment && (
             <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[24px] text-left animate-in fade-in zoom-in duration-500">
               <p className="text-xs font-bold text-amber-900 mb-2 uppercase tracking-wider flex items-center gap-2">
-                <AlertCircle size={16} /> PIX da reserva de grupo
+                <AlertCircle size={16} /> PIX da reserva
               </p>
               <p className="text-[11px] text-amber-800 leading-relaxed mb-4">
-                Taxa de <strong>R$ 100,00</strong>, revertida em consumação. A confirmação é automática após o pagamento.
+                Taxa de <strong>R$ {(pixPayment?.amount || reservationPaymentAmount).toFixed(2).replace('.', ',')}</strong>, revertida em consumação. A confirmação é automática após o pagamento.
               </p>
 
               {isCreatingPix && (
@@ -522,7 +574,7 @@ export default function DunaGastrobarReservation() {
                   <button
                     type="button"
                     disabled={isCreatingPix || !reservationId}
-                    onClick={() => createPixPayment(reservationId)}
+                    onClick={() => createPixPayment(reservationId, reservationAccessToken)}
                     className="rounded-lg bg-red-600 px-4 py-2 text-[9px] font-bold uppercase tracking-wider text-white disabled:opacity-50"
                   >
                     Tentar gerar novamente
@@ -532,43 +584,18 @@ export default function DunaGastrobarReservation() {
             </div>
           )}
 
-          {(guests || 0) < 15 && specialDateInfo?.requires_fee && (
-            <div className="mb-8 rounded-[24px] border border-amber-200 bg-amber-50 p-6 text-left">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-900">Pagamento da data especial</p>
-              <a
-                href="https://payment-link-v3.stone.com.br/pl_xa7k1LDo6qzO8Z7FyVheNpG9YMvrX2Q5"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full rounded-xl bg-[#4A3728] py-3 text-center text-[10px] font-bold uppercase tracking-widest text-white"
-              >
-                Pagar R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')}
-              </a>
-            </div>
-          )}
-
           <button 
             onClick={() => handleWhatsAppRedirect('success', guests || 0)}
             className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
           >
             <MessageCircle size={18} />
-            {(guests || 0) >= 15 ? 'Falar com a equipe' : specialDateInfo?.requires_fee ? 'Enviar comprovante' : 'Confirmar no WhatsApp'}
+            {requiresPayment ? 'Falar com a equipe' : 'Confirmar no WhatsApp'}
           </button>
           <p className="text-center text-[9px] opacity-60 mb-6 px-4">
-            {(guests || 0) >= 15
+            {requiresPayment
               ? 'Não é necessário enviar comprovante: o pagamento é confirmado automaticamente.'
-              : specialDateInfo?.requires_fee
-                ? 'Após o pagamento, envie o comprovante para nossa equipe.'
-                : 'Clique acima para notificar nossa equipe sobre sua reserva.'}
+              : 'Clique acima para notificar nossa equipe sobre sua reserva.'}
           </p>
-          <a 
-            href="https://dunacozinhabar.cfshop.com.br/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="w-full py-4 bg-[#4A3728] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-6 flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <Utensils size={18} />
-            Ver Cardápio Digital
-          </a>
           <button 
             onClick={resetForm}
             className="w-full py-4 bg-transparent text-[#4A3728]/60 rounded-2xl font-bold uppercase tracking-wider text-[10px] hover:bg-[#F5F2ED] transition-colors"
@@ -1046,20 +1073,45 @@ export default function DunaGastrobarReservation() {
                 )}
 
                 {/* Aviso sobre Eventos Especiais ou Taxas de Grupo */}
-                {guests && (guests >= 15 || specialDateInfo?.requires_fee) && (
+                {guests && requiresPayment && (
                   <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex flex-col gap-2 animate-in fade-in duration-300">
                     <div className="flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
                         {specialDateInfo?.requires_fee 
                           ? <span><strong>{specialDateInfo.description || 'Data Especial'}:</strong> Requer pagamento de taxa de reserva de R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')} (100% revertido em consumação).</span>
-                          : <span><strong>Reserva de Grupo:</strong> Acima de 15 pessoas requer pagamento de taxa de R$ 100,00 (100% revertido em consumação).</span>
+                          : <span><strong>Reserva de Grupo:</strong> 15 ou mais pessoas requerem pagamento de taxa de R$ 100,00 (100% revertido em consumação).</span>
                         }
                       </p>
                     </div>
                     <p className="text-[9px] text-red-700 font-bold leading-tight pl-8">
                       *Tolerância de 20 min. O valor não é reembolsável em caso de atraso ou cancelamento.
                     </p>
+                  </div>
+                )}
+
+                {date && guests && time && checkLeadTime(date, time) && decorations.length > 0 && (
+                  <div className="border-t border-[#D9CFC1] p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/60">Espaço ou decoração (Opcional)</p>
+                        <p className="mt-1 text-[10px] text-[#4A3728]/45">Escolha uma opção para a sua ocasião.</p>
+                      </div>
+                      {decorationId && <button type="button" onClick={() => setDecorationId('')} className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60">Limpar</button>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {decorations.map((decoration) => (
+                        <button
+                          type="button"
+                          key={decoration.id}
+                          onClick={() => setDecorationId(decoration.id)}
+                          className={`overflow-hidden rounded-xl border text-left transition-all ${decorationId === decoration.id ? 'border-[#4A3728] ring-1 ring-[#4A3728]' : 'border-[#D9CFC1]'}`}
+                        >
+                          <img src={decoration.image_url} alt="" className="h-20 w-full object-cover" />
+                          <span className="block px-3 py-2 text-[10px] font-bold text-[#4A3728]">{decoration.name}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -1130,7 +1182,7 @@ export default function DunaGastrobarReservation() {
                       />
                       {formErrors.whatsapp && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.whatsapp}</p>}
                     </div>
-                    {guests >= 15 && (
+                    {requiresPayment && (
                       <div>
                         <input
                           type="text"
@@ -1154,7 +1206,7 @@ export default function DunaGastrobarReservation() {
                 )}
 
                 {/* POLÍTICA DE ATRASO / CONCORDÂNCIA */}
-                {date && guests && time && formData.name && formData.email && formData.whatsapp && (guests < 15 || formData.cpf) && (
+                {date && guests && time && formData.name && formData.email && formData.whatsapp && (!requiresPayment || formData.cpf) && (
                   <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex items-start gap-3 animate-in fade-in duration-300">
                     <input
                       id="terms-check"
@@ -1165,7 +1217,7 @@ export default function DunaGastrobarReservation() {
                     />
                     <label htmlFor="terms-check" className="text-[11px] leading-normal text-amber-900 cursor-pointer font-medium">
                       Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong>
-                      {(guests >= 15 || specialDateInfo?.requires_fee) && (
+                      {requiresPayment && (
                         <> e que a taxa de reserva <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento</>
                       )}.
                     </label>
@@ -1175,14 +1227,14 @@ export default function DunaGastrobarReservation() {
                 {/* BOTÃO DE CONFIRMAÇÃO */}
                 <div className="p-4 border-t border-[#D9CFC1] bg-white rounded-b-[28px]">
                   <button
-                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || (guests >= 15 && !formData.cpf) || !policyAccepted || isSubmitting}
+                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || (requiresPayment && !formData.cpf) || !policyAccepted || isSubmitting}
                     onClick={async () => {
                       if (validateForm()) {
                         await handleSubmit();
                       }
                     }}
                     className={`duna-submit w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
-                      policyAccepted && date && guests && time && formData.name && formData.whatsapp && (guests < 15 || formData.cpf)
+                       policyAccepted && date && guests && time && formData.name && formData.whatsapp && (!requiresPayment || formData.cpf)
                        ? 'is-ready active:scale-[0.98]'
                       : 'bg-stone-300 cursor-not-allowed shadow-none text-stone-500'
                     }`}
@@ -1207,31 +1259,64 @@ export default function DunaGastrobarReservation() {
             /* VISUALIZAÇÃO: MINHAS RESERVAS */
             <div className="p-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="mb-8">
-                <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Consultar Reservas 🔎</h2>
+                  <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Minhas Reservas 🔎</h2>
                 <p className="text-[11px] opacity-60 leading-relaxed uppercase tracking-widest text-[#4A3728]">
-                  Informe seu WhatsApp para acompanhar o status da sua reserva.
+                  As reservas feitas neste dispositivo ficam disponíveis aqui. Informe seu WhatsApp apenas para filtrar.
                 </p>
               </div>
 
-              <div className="space-y-4 mb-8">
+               <div className="space-y-4 mb-8">
                 <div className="relative">
                   <input
                     type="tel"
                     inputMode="tel"
-                    placeholder="(69) 99999-9999"
+                    placeholder="Filtrar por WhatsApp (opcional)"
                     value={searchPhone}
                     onChange={(e) => setSearchPhone(formatPhoneNumber(e.target.value))}
                     className="w-full px-5 py-4 bg-white border border-[#D9CFC1] rounded-2xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none shadow-sm transition-all"
                   />
                   <button 
                     onClick={fetchUserReservations}
-                    disabled={isSearching || searchPhone.length < 10}
+                    disabled={isSearching}
                     className="absolute right-2 top-2 bottom-2 px-4 bg-[#4A3728] text-white rounded-xl flex items-center justify-center disabled:opacity-50 transition-all active:scale-95"
                   >
                     {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
                   </button>
-                </div>
-              </div>
+                 </div>
+                 <div className="rounded-2xl border border-[#D9CFC1] bg-[#F5F2ED] p-4">
+                   <p className="mb-3 flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/70">
+                     <ShieldCheck size={14} /> Acessar de outro dispositivo
+                   </p>
+                   <div className="flex gap-2">
+                     <input
+                       type="email"
+                       placeholder="Seu e-mail da reserva"
+                       value={recoveryEmail}
+                       onChange={(event) => setRecoveryEmail(event.target.value)}
+                       className="min-w-0 flex-1 rounded-xl border border-[#D9CFC1] bg-white px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-[#4A3728]"
+                     />
+                     <button type="button" onClick={requestRecoveryCode} className="rounded-xl bg-[#4A3728] px-3 text-[9px] font-bold uppercase tracking-wider text-white">
+                       Enviar código
+                     </button>
+                   </div>
+                   {recoveryChallengeId && (
+                     <div className="mt-2 flex gap-2">
+                       <input
+                         inputMode="numeric"
+                         maxLength={6}
+                         placeholder="Código de 6 dígitos"
+                         value={recoveryCode}
+                         onChange={(event) => setRecoveryCode(event.target.value.replace(/\D/g, ''))}
+                         className="min-w-0 flex-1 rounded-xl border border-[#D9CFC1] bg-white px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-[#4A3728]"
+                       />
+                       <button type="button" onClick={verifyRecoveryCode} className="rounded-xl border border-[#4A3728]/30 px-3 text-[9px] font-bold uppercase tracking-wider text-[#4A3728]">
+                         Validar
+                       </button>
+                     </div>
+                   )}
+                   {recoveryMessage && <p className="mt-2 text-[10px] text-[#4A3728]/70">{recoveryMessage}</p>}
+                 </div>
+               </div>
 
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
                 {hasSearched && userReservations.length === 0 && !isSearching && (
@@ -1261,33 +1346,27 @@ export default function DunaGastrobarReservation() {
                       {/* Status Badge */}
                       <div className={`px-3 py-1 rounded-full flex items-center gap-1.5 ${
                         (res.status || 'pending') === 'confirmed' ? 'bg-green-100 text-green-700' :
-                        (res.status || 'pending') === 'cancelled' ? 'bg-red-100 text-red-700' :
+                        ((res.status || 'pending') === 'cancelled' || res.status === 'cancelado') ? 'bg-red-100 text-red-700' :
                         (res.status || 'pending') === 'completed' ? 'bg-blue-100 text-blue-700' :
+                        (res.status || 'pending') === 'no_show' ? 'bg-amber-100 text-amber-700' :
                         'bg-amber-100 text-amber-700'
                       }`}>
                         {(res.status || 'pending') === 'confirmed' ? <CalendarCheck size={10} /> :
-                         (res.status || 'pending') === 'cancelled' ? <XCircle size={10} /> :
-                         (res.status || 'pending') === 'completed' ? <History size={10} /> :
-                         <Clock size={10} />}
+                          ((res.status || 'pending') === 'cancelled' || res.status === 'cancelado') ? <XCircle size={10} /> :
+                          (res.status || 'pending') === 'completed' ? <History size={10} /> :
+                          (res.status || 'pending') === 'no_show' ? <CalendarOff size={10} /> :
+                          <Clock size={10} />}
                         <span className="text-[9px] font-bold uppercase tracking-widest">
                           {res.status === 'confirmed' ? 'Confirmada' :
-                           res.status === 'cancelled' ? 'Cancelada' :
+                           (res.status === 'cancelled' || res.status === 'cancelado') ? 'Cancelada' :
                            res.status === 'completed' ? 'Concluída' :
+                           res.status === 'no_show' ? 'Não compareceu' :
                            'Pendente'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-[#F5F2ED]">
-                      <a 
-                        href="https://dunacozinhabar.cfshop.com.br/" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 py-2.5 bg-[#F5F2ED] text-[#4A3728] rounded-xl text-[9px] font-bold uppercase tracking-wider active:scale-95 transition-all"
-                      >
-                        <Utensils size={14} />
-                        Cardápio
-                      </a>
+                    <div className="grid grid-cols-1 gap-2 mt-4 pt-4 border-t border-[#F5F2ED]">
                       <a 
                         href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7" 
                         target="_blank" 
