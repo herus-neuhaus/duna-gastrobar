@@ -4,6 +4,7 @@ import { isValidCpf } from '@/lib/pagarme';
 import { createReservationAccessToken, hashReservationAccessToken } from '@/lib/reservation-access';
 
 export const runtime = 'nodejs';
+type DecorationAvailability = { decoration_id: string; available: boolean };
 
 function normalizePhone(phone: string) {
   return phone.replace(/\D/g, '');
@@ -58,15 +59,25 @@ export async function POST(request: Request) {
     if (timeError) throw timeError;
     if (!timeAvailable) return NextResponse.json({ error: 'Data ou horário indisponível.' }, { status: 400 });
     if (decorationId) {
-      const { data: decoration, error: decorationError } = await supabase
-        .from('decorations')
-        .select('id')
-        .eq('id', decorationId)
-        .eq('active', true)
-        .maybeSingle();
+      const [{ data: decoration, error: decorationError }, { data: decorationAvailability, error: decorationAvailabilityError }] = await Promise.all([
+        supabase
+          .from('decorations')
+          .select('id')
+          .eq('id', decorationId)
+          .eq('active', true)
+          .maybeSingle(),
+        supabase.rpc('get_reservation_decoration_availability', {
+          p_reservation_date: date,
+          p_reservation_time: time,
+        }),
+      ]);
 
       if (decorationError || !decoration) {
         return NextResponse.json({ error: 'A decoração escolhida não está disponível.' }, { status: 400 });
+      }
+      if (decorationAvailabilityError) throw decorationAvailabilityError;
+      if (!((decorationAvailability || []) as DecorationAvailability[]).some((item) => item.decoration_id === decorationId && item.available)) {
+        return NextResponse.json({ error: 'Esta mesa já está reservada neste período.', code: 'DECORATION_UNAVAILABLE' }, { status: 409 });
       }
     }
 
@@ -143,8 +154,12 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Erro ao criar reserva:', error);
     const errorMessage = error instanceof Error ? error.message : '';
+    const errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+    if (errorCode === '23505' && errorMessage.includes('reservations_active_decoration_period_unique')) {
+      return NextResponse.json({ error: 'Esta mesa já está reservada neste período.', code: 'DECORATION_UNAVAILABLE' }, { status: 409 });
+    }
     if (errorMessage.includes('CAPACITY_EXCEEDED')) {
-      return NextResponse.json({ error: 'A capacidade para esta data foi atingida.' }, { status: 409 });
+      return NextResponse.json({ error: 'A capacidade para esta data foi atingida.', code: 'CAPACITY_EXCEEDED' }, { status: 409 });
     }
     if (errorMessage.includes('ACTIVE_RESERVATION_EXISTS')) {
       return NextResponse.json({ error: 'Já existe uma reserva ativa para este WhatsApp nesta data.' }, { status: 409 });

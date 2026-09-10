@@ -8,6 +8,7 @@ import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } 
 import { ptBR } from 'date-fns/locale';
 
 type ReservationCredential = { id: string; token: string; phone: string };
+type Decoration = { id: string; name: string; image_url: string; available: boolean };
 
 const RESERVATION_CREDENTIALS_KEY = 'duna-reservation-credentials';
 
@@ -50,7 +51,7 @@ export default function DunaGastrobarReservation() {
   const [availableTimesByDate, setAvailableTimesByDate] = useState<Record<string, string[]>>({});
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
   const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
-  const [decorations, setDecorations] = useState<Array<{ id: string; name: string; image_url: string }>>([]);
+  const [decorations, setDecorations] = useState<Decoration[]>([]);
   const [decorationId, setDecorationId] = useState('');
   
   // States for "My Reservations"
@@ -218,15 +219,27 @@ export default function DunaGastrobarReservation() {
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      void fetch('/api/decorations', { cache: 'no-store' })
-        .then((response) => response.ok ? response.json() : { decorations: [] })
-        .then((result) => setDecorations(result.decorations || []))
-        .catch(() => setDecorations([]));
-    }, 0);
+    if (!date || !time) {
+      return;
+    }
 
-    return () => window.clearTimeout(timeout);
-  }, []);
+    let cancelled = false;
+    void fetch(`/api/decorations?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`, { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : { decorations: [] })
+      .then((result) => {
+        if (cancelled) return;
+        const nextDecorations = result.decorations || [];
+        setDecorations(nextDecorations);
+        setDecorationId((currentId) => nextDecorations.some((decoration: Decoration) => decoration.id === currentId && decoration.available) ? currentId : '');
+      })
+      .catch(() => {
+        if (!cancelled) setDecorations([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date, time]);
 
   const fetchSpecialDate = (selectedDate: string) => {
     const data = allSpecialDates.filter((specialDate) => specialDate.date === selectedDate);
@@ -337,7 +350,7 @@ export default function DunaGastrobarReservation() {
       const result = await response.json();
 
       if (!response.ok) {
-        if (response.status === 409) setCapacityError(true);
+        if (result.code === 'CAPACITY_EXCEEDED') setCapacityError(true);
         throw new Error(result.error || 'Não foi possível criar a reserva.');
       }
 
@@ -1095,11 +1108,15 @@ export default function DunaGastrobarReservation() {
                         <button
                           type="button"
                           key={decoration.id}
+                          disabled={!decoration.available}
                           onClick={() => setDecorationId(decoration.id)}
-                          className={`overflow-hidden rounded-xl border text-left transition-all ${decorationId === decoration.id ? 'border-[#4A3728] ring-1 ring-[#4A3728]' : 'border-[#D9CFC1]'}`}
+                          className={`overflow-hidden rounded-xl border text-left transition-all ${decoration.available ? decorationId === decoration.id ? 'border-[#4A3728] ring-1 ring-[#4A3728]' : 'border-[#D9CFC1]' : 'cursor-not-allowed border-[#D9CFC1] opacity-45'}`}
                         >
                           <img src={decoration.image_url} alt="" className="h-20 w-full object-cover" />
-                          <span className="block px-3 py-2 text-[10px] font-bold text-[#4A3728]">{decoration.name}</span>
+                          <span className="block px-3 py-2 text-[10px] font-bold text-[#4A3728]">
+                            {decoration.name}
+                            {!decoration.available && <small className="block pt-1 text-[8px] font-medium uppercase tracking-wide">Indisponível neste período</small>}
+                          </span>
                         </button>
                       ))}
                     </div>

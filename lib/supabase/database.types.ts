@@ -117,6 +117,7 @@ export type Database = {
           created_at: string
           customer_id: string | null
           decoration_id: string | null
+          decoration_service_starts_at: string | null
           email: string
           expires_at: string | null
           id: string
@@ -142,6 +143,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           decoration_id?: string | null
+          decoration_service_starts_at?: string | null
           email: string
           expires_at?: string | null
           id?: string
@@ -167,6 +169,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           decoration_id?: string | null
+          decoration_service_starts_at?: string | null
           email?: string
           expires_at?: string | null
           id?: string
@@ -491,6 +494,14 @@ export type Database = {
       get_reservation_available_times: {
         Args: { p_from: string; p_to: string }
         Returns: { reservation_date: string; reservation_time: string }[]
+      }
+      get_reservation_decoration_availability: {
+        Args: { p_reservation_date: string; p_reservation_time: string }
+        Returns: { available: boolean; decoration_id: string }[]
+      }
+      get_reservation_service_starts_at: {
+        Args: { p_reservation_date: string; p_reservation_time: string }
+        Returns: string
       }
       get_reservation_with_access_token: {
         Args: { p_access_token_hash: string; p_reservation_id: string }
