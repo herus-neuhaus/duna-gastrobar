@@ -1,0 +1,77 @@
+{
+  "catalog": {
+    "columns": {
+      "after": "8354871f03e4a451ac71e8b42ee3bb06",
+      "reason": "Plano 2B stores each reservation's service turn and the owner authorization metadata needed for capacity and schedule exceptions."
+    },
+    "constraints": {
+      "after": "03728014df8cc7463a30a2d9baa5bfdf",
+      "reason": "Plano 2B requires an actor and timestamp whenever an exception reason is stored."
+    },
+    "indexes": {
+      "after": "3f6da3bf3486505a3788e4ccd0bc0d56",
+      "reason": "Plano 2B indexes active, non-walk-in reservations by date and service turn, plus the override audit lookup."
+    },
+    "policies": {
+      "after": "0a7876eef8ff3e1a8adf16eab71a3d3d",
+      "reason": "Plano 2B restricts exception-audit reads to the dono role."
+    },
+    "triggers": {
+      "after": "f35f065e9975a6b6609912250f2481fb",
+      "reason": "Plano 2B classifies a reservation before enforcing service capacity and records approved overrides."
+    },
+    "tables_rls_grants": {
+      "after": "096f415f45f074d375dc3c64c4054c22",
+      "reason": "Plano 2B adds the RLS-protected reservation_override_audits table and its owner read grant."
+    }
+  },
+  "functions": {
+    "public.check_daily_capacity": {
+      "body": { "after": "aaeb19397f0b549948484c2e8af28af8" },
+      "reason": "Plano 2B applies an advisory-locked capacity of 80 per date and service turn, excludes walk-ins, and fails closed for unclassified history."
+    },
+    "public.validate_reservation_schedule": {
+      "body": { "after": "c60f06c508742bb219b66bed5c88d5e8" },
+      "reason": "Plano 2B permits an out-of-schedule reservation only when an owner authorization was recorded."
+    },
+    "public.is_reservation_owner": {
+      "body": { "after": "623210d0368b7487a314c65d2e14efe4" },
+      "contract": { "after": "0a3b0317652a61cbd38852e3a4498d06" },
+      "reason": "Plano 2B introduces the dedicated dono authorization predicate."
+    },
+    "public.set_reservation_service_period": {
+      "body": { "after": "615d616af0387e981721cab7dd883e2d" },
+      "contract": { "after": "1c5f61d19c68e234bcd8bff9d083d630" },
+      "reason": "Plano 2B snapshots a reservation's service turn and requires a valid reference turn for schedule exceptions."
+    },
+    "public.record_reservation_override_audits": {
+      "body": { "after": "77e3a30efdc5645cbc2fbfa3a0c66efc" },
+      "contract": { "after": "07cf8a93b43204a6aef39a657c2847e0" },
+      "reason": "Plano 2B writes the actor, reason, date, turn and capacity effect of approved exceptions."
+    },
+    "public.get_reservation_capacity_availability": {
+      "body": { "after": "5e5d76f6821895c7037811c0c925b8ff" },
+      "contract": { "after": "2f44b636f0a0af33a10328091a8d79c8" },
+      "reason": "Plano 2B returns capacity by public booking slot and service turn."
+    },
+    "public.reservation_service_start_is_available": {
+      "body": { "after": "9c3110904342f8f6faa1074e1011a0cb" },
+      "contract": { "after": "a79f8cc61155c6d607d8d9c67fa53bce" },
+      "reason": "Plano 2B validates the explicit reference turn used by an out-of-schedule exception."
+    },
+    "public.create_reservation_with_owner_overrides": {
+      "body": { "after": "39ac41f1e7e0ee3151254b2f944ce92f" },
+      "contract": { "after": "7e3e6cad5c0d3597c0edf550ea1deefa" },
+      "reason": "Plano 2B creates audited capacity and schedule exceptions only for the dono role."
+    },
+    "public.classify_reservation_service_period": {
+      "body": { "after": "1681a5562d9d91a176fc7541b3f50ed4" },
+      "contract": { "after": "c0b35f2fada0197576c89278ff626a3a" },
+      "reason": "Plano 2B lets the dono resolve an explicitly reviewed historical reservation without guessing its turn."
+    },
+    "public.replace_reservation_table_assignments": {
+      "body": { "after": "602b799478dd4a7b96eb3bc1b7be0b4a" },
+      "reason": "Follow-up hardening requires active tables in active areas and serializes assignments against changes to those active flags."
+    }
+  }
+}

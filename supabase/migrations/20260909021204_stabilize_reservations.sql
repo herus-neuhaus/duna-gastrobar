@@ -7,6 +7,8 @@ create index if not exists reservations_reservation_date_idx
   on public.reservations (reservation_date);
 
 -- Every write for one date waits its turn before calculating capacity.
+-- Reconstruction correction (2026-10-03): single-backslash regex matches the
+-- inspected definition already installed under this version in production.
 create or replace function public.check_daily_capacity()
 returns trigger
 language plpgsql
@@ -30,13 +32,13 @@ begin
 
   if tg_op = 'INSERT'
      or new.reservation_date is distinct from old.reservation_date
-     or regexp_replace(new.whatsapp, '\\D', '', 'g') is distinct from regexp_replace(old.whatsapp, '\\D', '', 'g')
+     or regexp_replace(new.whatsapp, '\D', '', 'g') is distinct from regexp_replace(old.whatsapp, '\D', '', 'g')
      or lower(coalesce(old.status, 'pending')) in ('cancelled', 'cancelado') then
     select exists (
       select 1
       from public.reservations
       where reservation_date = new.reservation_date
-        and regexp_replace(whatsapp, '\\D', '', 'g') = regexp_replace(new.whatsapp, '\\D', '', 'g')
+        and regexp_replace(whatsapp, '\D', '', 'g') = regexp_replace(new.whatsapp, '\D', '', 'g')
         and lower(coalesce(status, 'pending')) not in ('cancelled', 'cancelado')
         and id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid)
     ) into has_duplicate;

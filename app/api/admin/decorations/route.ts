@@ -109,22 +109,47 @@ export async function DELETE(request: Request) {
     .select('id, image_path')
     .eq('id', id)
     .maybeSingle();
-  if (lookupError) throw lookupError;
+  if (lookupError) {
+    console.error('Erro ao consultar decoração para excluir:', lookupError);
+    return NextResponse.json({ error: 'Não foi possível consultar a decoração.' }, { status: 500 });
+  }
   if (!decoration) return NextResponse.json({ error: 'Decoração não encontrada.' }, { status: 404 });
 
-  const { error: deleteError } = await supabase
-    .from('decorations')
-    .delete()
-    .eq('id', id);
-  if (deleteError) {
-    console.error('Erro ao excluir decoração:', deleteError);
-    return NextResponse.json({ error: 'Não foi possível excluir a decoração.' }, { status: 500 });
+  const storage = supabase.storage.from(BUCKET);
+  const { data: image, error: downloadError } = await storage.download(decoration.image_path);
+  if (downloadError || !image) {
+    console.error('Erro ao preservar imagem antes da exclusão:', downloadError);
+    return NextResponse.json({ error: 'Não foi possível acessar a imagem. O cadastro foi mantido.' }, { status: 500 });
   }
 
-  const { error: storageError } = await supabase.storage.from(BUCKET).remove([decoration.image_path]);
+  const { error: storageError } = await storage.remove([decoration.image_path]);
   if (storageError) {
     console.error('Erro ao remover imagem de decoração:', storageError);
-    return NextResponse.json({ error: 'A decoração foi excluída, mas a imagem não pôde ser removida.' }, { status: 500 });
+    return NextResponse.json({ error: 'Não foi possível remover a imagem. O cadastro foi mantido.' }, { status: 500 });
+  }
+
+  const { data: deletedDecoration, error: deleteError } = await supabase
+    .from('decorations')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (deleteError) {
+    console.error('Erro ao excluir decoração:', deleteError);
+    const { error: restoreError } = await storage.upload(decoration.image_path, image, {
+      contentType: image.type || 'application/octet-stream',
+      upsert: false,
+    });
+    if (restoreError) console.error('Não foi possível restaurar imagem após falha ao excluir decoração:', restoreError);
+    return NextResponse.json({ error: 'Não foi possível excluir a decoração.' }, { status: 500 });
+  }
+  if (!deletedDecoration) {
+    const { error: restoreError } = await storage.upload(decoration.image_path, image, {
+      contentType: image.type || 'application/octet-stream',
+      upsert: false,
+    });
+    if (restoreError) console.error('Não foi possível restaurar imagem após conflito ao excluir decoração:', restoreError);
+    return NextResponse.json({ error: 'A decoração foi alterada durante a exclusão. Atualize a lista e tente novamente.' }, { status: 409 });
   }
 
   return NextResponse.json({ success: true });

@@ -43,12 +43,13 @@ export default function DunaGastrobarReservation() {
   const [pixError, setPixError] = useState('');
   const [isCreatingPix, setIsCreatingPix] = useState(false);
   const [pixCopied, setPixCopied] = useState(false);
-  const [capacityError, setCapacityError] = useState(false);
   const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
   const [allSpecialDates, setAllSpecialDates] = useState<any[]>([]);
   const [allBlockedDates, setAllBlockedDates] = useState<any[]>([]);
   const [availableTimesByDate, setAvailableTimesByDate] = useState<Record<string, string[]>>({});
+  const [timeTurnsByDate, setTimeTurnsByDate] = useState<Record<string, Record<string, string>>>({});
+  const [turnTotals, setTurnTotals] = useState<Record<string, number>>({});
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
   const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
   const [decorations, setDecorations] = useState<Decoration[]>([]);
@@ -111,11 +112,11 @@ export default function DunaGastrobarReservation() {
       .join(' ');
   };
 
-  // Gera as datas disponíveis (próximos 45 dias, pulando segundas-feiras)
+  // The public booking horizon is today plus the following ten calendar days.
   const generateAvailableDates = () => {
     const dates = [];
     const today = new Date();
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i <= 10; i++) {
       const d = addDays(today, i);
       const dayOfWeek = getDay(d); // 0 = Domingo, 1 = Segunda, ...
       if (dayOfWeek !== 1) {
@@ -162,7 +163,11 @@ export default function DunaGastrobarReservation() {
   };
 
   const getAvailableTimes = (selectedDate: string) => {
-    return availableTimesByDate[selectedDate] || [];
+    return (availableTimesByDate[selectedDate] || []).filter((selectedTime) => {
+      const commercialTurn = timeTurnsByDate[selectedDate]?.[selectedTime];
+      const occupied = commercialTurn ? turnTotals[`${selectedDate}|${commercialTurn}`] || 0 : 0;
+      return occupied + (guests || 1) <= CAPACITY_LIMIT;
+    });
   };
 
   const checkLeadTime = (selectedDate: string, selectedTime: string) => {
@@ -175,18 +180,17 @@ export default function DunaGastrobarReservation() {
     return diff >= 8;
   };
 
-  const fetchCapacity = async (selectedDate: string) => {
+  const fetchCapacity = async (selectedDate: string, selectedTime = '') => {
     try {
       const response = await fetch(`/api/reservations/availability?from=${selectedDate}`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
 
-      const total = result.totals?.[selectedDate] || 0;
+      const commercialTurn = result.timeTurns?.[selectedDate]?.[selectedTime];
+      const total = commercialTurn ? result.turnTotals?.[`${selectedDate}|${commercialTurn}`] || 0 : 0;
       setTotalGuestsForDate(total);
-      setCapacityError(total >= CAPACITY_LIMIT);
     } catch {
       setTotalGuestsForDate(0);
-      setCapacityError(false);
     }
   };
 
@@ -202,11 +206,15 @@ export default function DunaGastrobarReservation() {
       setAllSpecialDates(result.specialDates || []);
       setAllBlockedDates(result.blockedDates || []);
       setAvailableTimesByDate(result.availableTimes || {});
+      setTimeTurnsByDate(result.timeTurns || {});
+      setTurnTotals(result.turnTotals || {});
     } catch {
       setFullyBookedDates([]);
       setAllSpecialDates([]);
       setAllBlockedDates([]);
       setAvailableTimesByDate({});
+      setTimeTurnsByDate({});
+      setTurnTotals({});
     }
   };
 
@@ -293,7 +301,6 @@ export default function DunaGastrobarReservation() {
     setPixPayment(null);
     setPixError('');
     setPixCopied(false);
-    setCapacityError(false);
     setTotalGuestsForDate(0);
     setCustomGuestCount('');
     setPolicyAccepted(false);
@@ -350,7 +357,6 @@ export default function DunaGastrobarReservation() {
       const result = await response.json();
 
       if (!response.ok) {
-        if (result.code === 'CAPACITY_EXCEEDED') setCapacityError(true);
         throw new Error(result.error || 'Não foi possível criar a reserva.');
       }
 
@@ -944,11 +950,9 @@ export default function DunaGastrobarReservation() {
                             )}
                             <div className="grid grid-cols-5 gap-2 p-4 shrink-0">
                           {Array.from({ length: 30 }, (_, i) => i + 1).map((num) => {
-                            const isOverflow = (totalGuestsForDate + num) > CAPACITY_LIMIT;
                             return (
                               <button
                                 key={num}
-                                disabled={isOverflow}
                                 onClick={() => {
                                   setGuests(num);
                                   setCustomGuestCount('');
@@ -1023,6 +1027,7 @@ export default function DunaGastrobarReservation() {
                             key={t}
                             onClick={() => {
                               setTime(t);
+                              void fetchCapacity(date, t);
                               setIsHorarioOpen(false);
                             }}
                             className={`py-2.5 rounded-lg border text-xs font-bold transition-all ${
@@ -1058,12 +1063,12 @@ export default function DunaGastrobarReservation() {
                   </div>
                 )}
 
-                {guests && (totalGuestsForDate + guests > CAPACITY_LIMIT) && (
+                {date && time && guests && (totalGuestsForDate + guests > CAPACITY_LIMIT) && (
                   <div className="p-4 bg-red-50 border-t border-[#D9CFC1] flex flex-col gap-3 animate-in fade-in duration-300">
                     <div className="flex items-start gap-3">
                       <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                       <p className="text-[11px] leading-relaxed text-red-800 font-medium">
-                        A capacidade para este dia foi atingida no sistema. Fale conosco no WhatsApp para verificar disponibilidades extras.
+                          A capacidade para este turno foi atingida no sistema. Fale conosco no WhatsApp para verificar disponibilidades extras.
                       </p>
                     </div>
                     <button 

@@ -1,0 +1,12 @@
+{
+  "public.get_reservation_occupancy_window": {
+    "observed": "01d091104b7b00fa01f2bcd29f5fed90",
+    "local": "e826a37a156f6f3fa20c8f8140d4eda5",
+    "reason": "Remote qualifies duration/buffer columns with date_slot and weekly_slot; local selects the same columns from the single table in each UNION arm. Reviewed definitions and exercised allocation behavior."
+  },
+  "public.validate_reservation_schedule": {
+    "observed": "b5305dcf8fa434e7b056dc31c06eb373",
+    "local": "465005fe65afb96d89b41795db606cad",
+    "reason": "Remote body ends with end, local with end;. Both compile; otherwise identical after whitespace/case normalization."
+  }
+}

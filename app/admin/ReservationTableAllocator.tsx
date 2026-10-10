@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Check, Loader2, RotateCcw, TableProperties } from 'lucide-react';
 
 type TableAvailability = {
@@ -24,31 +24,42 @@ export default function ReservationTableAllocator({ reservationId, onSaved }: { 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  const load = React.useEffectEvent(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const response = await fetch(`/api/admin/reservations/${reservationId}/tables`, { cache: 'no-store' });
-    const data = await response.json();
-    if (!response.ok) setMessage(data.error || 'Não foi possível consultar as mesas.');
-    else {
-      setTables(data.tables || []);
-      setSelected(data.assignedTableIds || []);
-      setSuggested(data.suggestedTableIds || []);
-      setGuests(data.reservation?.num_guests || 0);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/admin/reservations/${reservationId}/tables`, { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) setMessage(data.error || 'Não foi possível consultar as mesas.');
+      else {
+        setTables(data.tables || []);
+        setSelected(data.assignedTableIds || []);
+        setSuggested(data.suggestedTableIds || []);
+        setGuests(data.reservation?.num_guests || 0);
+      }
+    } catch {
+      setMessage('Falha de conexão ao consultar as mesas. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  });
-  useEffect(() => { const timeout = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timeout); }, [reservationId]);
+  }, [reservationId]);
+  useEffect(() => { const timeout = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timeout); }, [load]);
   const toggle = (table: TableAvailability) => {
     if (!table.available && !selected.includes(table.table_id)) return;
     setSelected((current) => current.includes(table.table_id) ? current.filter((id) => id !== table.table_id) : [...current, table.table_id]);
   };
   const save = async () => {
     setSaving(true); setMessage('');
-    const response = await fetch(`/api/admin/reservations/${reservationId}/tables`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tableIds: selected }) });
-    const data = await response.json();
-    if (!response.ok) setMessage(data.error || 'Não foi possível salvar a alocação.');
-    else { setMessage('Mesas alocadas.'); onSaved(); await load(); }
-    setSaving(false);
+    try {
+      const response = await fetch(`/api/admin/reservations/${reservationId}/tables`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tableIds: selected }) });
+      const data = await response.json();
+      if (!response.ok) setMessage(data.error || 'Não foi possível salvar a alocação.');
+      else { setMessage('Mesas alocadas.'); onSaved(); await load(); }
+    } catch {
+      setMessage('Falha de conexão ao salvar a alocação. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
   };
   const byArea = tables.reduce<Record<string, TableAvailability[]>>((groups, table) => ({ ...groups, [table.area_name]: [...(groups[table.area_name] || []), table] }), {});
 

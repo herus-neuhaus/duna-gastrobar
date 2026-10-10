@@ -50,3 +50,5 @@ next-env.d.ts
 gen_hash.js
 skills-lock.json
 metadata.json
+.local-db/
+supabase/.temp/
