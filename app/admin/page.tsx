@@ -787,8 +787,8 @@ function AdminDashboardContent() {
 
   return (
     <AdminLayoutShell activeItem={view}>
-      <header className="p-6 lg:p-10 pb-0 flex flex-col gap-2">
-        <h2 className="text-3xl font-serif font-bold uppercase tracking-tight text-[#4A3728]">
+      <header className="p-4 pb-0 flex flex-col gap-2 sm:p-6 sm:pb-0 xl:p-10 xl:pb-0">
+        <h2 className="text-2xl font-serif font-bold uppercase tracking-tight text-[#4A3728] sm:text-3xl">
            {view === 'reservations' && 'Monitor de Reservas'}
            {view === 'new_reservation' && 'Criar Reserva'}
            {view === 'decorations' && 'Espaços & Decorações'}
@@ -809,7 +809,7 @@ function AdminDashboardContent() {
           {view === 'produtividade' && 'Monitore a execução das tarefas e aprove conclusões'}
         </p>
       </header>
-      <div className="p-6 lg:p-10">
+      <div className="min-w-0 p-4 sm:p-6 xl:p-10">
          {view === 'reservations' && <ReservationsView />}
          {view === 'new_reservation' && <NewReservationView />}
          {view === 'decorations' && <DecorationsManager />}

@@ -16,13 +16,13 @@ function isValidTime(value: string) {
 }
 
 function walkInErrorMessage(message: string) {
-  if (message.includes('WALK_IN_DATE_REQUIRED')) return 'Walk-ins só podem ser registrados para hoje.';
+  if (message.includes('WALK_IN_DATE_REQUIRED')) return 'Só é possível registrar uma chegada sem reserva para hoje.';
   if (message.includes('INVALID_WALK_IN')) return 'Confira o nome, telefone e quantidade de pessoas.';
   if (message.includes('RESERVATION_TIME_UNAVAILABLE')) return 'Esse horário não está disponível na agenda.';
   if (message.includes('CAPACITY_EXCEEDED')) return 'A capacidade deste turno foi atingida.';
   if (message.includes('RESERVATION_TURN_CLASSIFICATION_REQUIRED')) return 'Há reservas antigas sem turno classificado; peça ao dono para revisar.';
-  if (message.includes('RESERVATION_STAFF_REQUIRED')) return 'Sua conta não tem autorização para registrar walk-ins.';
-  return 'Não foi possível criar o walk-in.';
+  if (message.includes('RESERVATION_STAFF_REQUIRED')) return 'Sua conta não tem autorização para registrar chegadas sem reserva.';
+  return 'Não foi possível registrar a chegada sem reserva.';
 }
 
 function operationsLoadFailure(errors: Array<{ code?: string; message?: string } | null | undefined>) {
@@ -42,6 +42,7 @@ function operationsLoadFailure(errors: Array<{ code?: string; message?: string }
 export async function GET(request: Request) {
   if (!(await isPanelStaff())) return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   const date = new URL(request.url).searchParams.get('date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
   if (!isValidDate(date)) return NextResponse.json({ error: 'Data inválida.' }, { status: 400 });
   const supabase = createAdminClient();
   const [reservations, tables, areas, waitlist, capacity, classificationIssues] = await Promise.all([
@@ -50,7 +51,7 @@ export async function GET(request: Request) {
     supabase.from('restaurant_areas').select('id,name').eq('active', true).order('display_order').order('name'),
     supabase.from('waitlist_entries').select('id,name,phone,party_size,status,created_at,preferred_area_id,notes').in('status', ['waiting','called']).order('created_at'),
     supabase.rpc('get_reservation_capacity_availability', { p_from: date, p_to: date }),
-    supabase.from('reservation_turn_classification_issues').select('id,reservation_date,reservation_time,num_guests,status,source,commercial_turn,created_at').order('reservation_date').order('reservation_time'),
+    supabase.from('reservation_turn_classification_issues').select('id,reservation_date,reservation_time,num_guests,status,source,commercial_turn,created_at').gte('reservation_date', today).order('reservation_date').order('reservation_time'),
   ]);
   const initialErrors = [reservations.error, tables.error, areas.error, waitlist.error, capacity.error, classificationIssues.error];
   if (initialErrors.some(Boolean)) return operationsLoadFailure(initialErrors);
@@ -113,8 +114,8 @@ export async function POST(request: Request) {
       .in('status', expectedStatuses)
       .select('id,status')
       .maybeSingle();
-    if (error) return NextResponse.json({ error: 'Não foi possível atualizar a fila.' }, { status: 400 });
-    if (!data) return NextResponse.json({ error: 'Esta entrada da fila já foi atualizada.' }, { status: 409 });
+    if (error) return NextResponse.json({ error: 'Não foi possível atualizar a lista de espera.' }, { status: 400 });
+    if (!data) return NextResponse.json({ error: 'Esta pessoa da lista de espera já foi atualizada.' }, { status: 409 });
     return NextResponse.json({ entry: data });
   }
   if (body.action === 'walk_in') {
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
     if (error || !reservation) return NextResponse.json({ error: walkInErrorMessage(error?.message || '') }, { status: 400 });
     if (Array.isArray(body.tableIds) && body.tableIds.every((id: unknown) => typeof id === 'string') && body.tableIds.length) {
       const { error: assignmentError } = await supabase.rpc('replace_reservation_table_assignments', { p_reservation_id: reservation.id, p_table_ids: body.tableIds });
-      if (assignmentError) return NextResponse.json({ id: reservation.id, error: 'Walk-in criado, mas as mesas não foram alocadas. Use a timeline para concluir a alocação.' }, { status: 202 });
+      if (assignmentError) return NextResponse.json({ id: reservation.id, error: 'Chegada registrada, mas não foi possível indicar a mesa. Abra o atendimento do dia e escolha uma mesa.' }, { status: 202 });
     }
     if (typeof body.waitlistId === 'string') {
       const { data: converted, error: conversionError } = await supabase.from('waitlist_entries')
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
         .in('status', ['waiting', 'called'])
         .select('id')
         .maybeSingle();
-      if (conversionError || !converted) return NextResponse.json({ id: reservation.id, error: 'Walk-in criado, mas a fila não foi atualizada. Confira a reserva antes de tentar novamente.' }, { status: 202 });
+      if (conversionError || !converted) return NextResponse.json({ id: reservation.id, error: 'Chegada registrada, mas não foi possível atualizar a lista de espera. Confira o atendimento antes de tentar novamente.' }, { status: 202 });
     }
     return NextResponse.json({ id: reservation.id }, { status: 201 });
   }
@@ -157,8 +158,8 @@ export async function POST(request: Request) {
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const partySize = body.partySize;
   const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
-  if (body.action !== 'waitlist' || name.length < 2 || name.length > 120 || !/^\d{10,13}$/.test(phone.replace(/\D/g, '')) || !Number.isInteger(partySize) || Number(partySize) < 1 || Number(partySize) > 30 || notes.length > 1000) return NextResponse.json({ error: 'Confira nome, telefone, quantidade e observações da fila.' }, { status: 400 });
+  if (body.action !== 'waitlist' || name.length < 2 || name.length > 120 || !/^\d{10,13}$/.test(phone.replace(/\D/g, '')) || !Number.isInteger(partySize) || Number(partySize) < 1 || Number(partySize) > 30 || notes.length > 1000) return NextResponse.json({ error: 'Confira nome, telefone, quantidade e observações da lista de espera.' }, { status: 400 });
   const { data, error } = await createAdminClient().from('waitlist_entries').insert({ name, phone, party_size: Number(partySize), preferred_area_id: typeof body.preferredAreaId === 'string' && body.preferredAreaId ? body.preferredAreaId : null, notes: notes || null }).select('id').single();
-  if (error) return NextResponse.json({ error: 'Não foi possível adicionar à fila.' }, { status: 400 });
+  if (error) return NextResponse.json({ error: 'Não foi possível adicionar à lista de espera.' }, { status: 400 });
   return NextResponse.json({ id: data.id }, { status: 201 });
 }
