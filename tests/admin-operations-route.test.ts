@@ -18,7 +18,7 @@ import { GET, POST } from '@/app/api/admin/operations/route';
 
 function queryBuilder(result: { data: unknown; error: null | { message: string } }) {
   const builder: Record<string, any> = {};
-  for (const method of ['select', 'eq', 'in', 'is', 'order', 'update', 'insert']) {
+  for (const method of ['select', 'eq', 'in', 'is', 'gte', 'order', 'update', 'insert']) {
     builder[method] = vi.fn(() => builder);
   }
   builder.maybeSingle = vi.fn(async () => result);
@@ -60,6 +60,10 @@ describe('/api/admin/operations', () => {
     await expect(response.json()).resolves.toMatchObject({ date: '2026-09-10', reservations: [{ id: 'reservation-today' }], canClassifyHistoricalReservations: false });
     expect(builders.reservation_table_assignments.in).toHaveBeenCalledWith('reservation_id', ['reservation-today']);
     expect(builders.reservation_table_assignments.is).toHaveBeenCalledWith('released_at', null);
+    expect(builders.reservation_turn_classification_issues.gte).toHaveBeenCalledWith(
+      'reservation_date',
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date()),
+    );
   });
 
   it('rejects an invalid operational date before querying the database', async () => {

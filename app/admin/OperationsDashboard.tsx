@@ -93,7 +93,7 @@ function statusLabel(status: string) {
     confirmed: 'Confirmada',
     seated: 'Sentada',
     completed: 'Concluída',
-    no_show: 'No-show',
+    no_show: 'Não compareceu',
     cancelled: 'Cancelada',
     cancelado: 'Cancelada',
     pendente: 'Pendente',
@@ -119,8 +119,7 @@ export default function OperationsDashboard() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [busyKey, setBusyKey] = useState('');
   const [expandedReservationId, setExpandedReservationId] = useState('');
-  const [showWaitlistForm, setShowWaitlistForm] = useState(false);
-  const [showWalkInForm, setShowWalkInForm] = useState(false);
+  const [activeEntryForm, setActiveEntryForm] = useState<'walk-in' | 'waitlist' | null>(null);
   const [walkInWaitlistId, setWalkInWaitlistId] = useState('');
   const [waitlistForm, setWaitlistForm] = useState<WaitlistForm>({ name: '', phone: '', partySize: '2', preferredAreaId: '', notes: '' });
   const [walkInForm, setWalkInForm] = useState<WalkInForm>({ name: '', phone: '', partySize: '2', time: '', notes: '' });
@@ -243,6 +242,17 @@ export default function OperationsDashboard() {
     (statusFilter === 'all' || (statusMatches[statusFilter] || [statusFilter]).includes(item.status.toLowerCase()))
     && `${item.name} ${item.whatsapp} ${item.reservation_time} ${item.status}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)
   ));
+  const receptionVisible = reservations.filter((item) => (
+    `${item.name} ${item.whatsapp} ${item.reservation_time} ${item.status}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)
+  ));
+  const awaitingArrival = receptionVisible.filter((item) => !item.arrived_at && ['pending', 'confirmed'].includes(item.status.toLowerCase()));
+  const arrivedWaiting = receptionVisible.filter((item) => item.arrived_at && ['pending', 'confirmed'].includes(item.status.toLowerCase()));
+  const seatedReservations = receptionVisible.filter((item) => item.status.toLowerCase() === 'seated');
+  const receptionLanes = [
+    { key: 'expected', title: 'Aguardando chegada', items: awaitingArrival },
+    { key: 'arrived', title: 'Chegaram · aguardando mesa', items: arrivedWaiting },
+    { key: 'seated', title: 'Sentados', items: seatedReservations },
+  ];
 
   const submitWaitlist = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -250,17 +260,17 @@ export default function OperationsDashboard() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'waitlist', name: waitlistForm.name, phone: waitlistForm.phone, partySize: Number(waitlistForm.partySize), preferredAreaId: waitlistForm.preferredAreaId || null, notes: waitlistForm.notes }),
-    }), 'Entrada adicionada à fila.');
+    }), 'Pessoa adicionada à lista de espera.');
     if (result) {
       setWaitlistForm({ name: '', phone: '', partySize: '2', preferredAreaId: '', notes: '' });
-      setShowWaitlistForm(false);
+      setActiveEntryForm(null);
     }
   };
 
   const openWalkIn = (entry?: WaitlistEntry) => {
     setWalkInWaitlistId(entry?.id || '');
     setWalkInForm({ name: entry?.name || '', phone: entry?.phone || '', partySize: String(entry?.party_size || 2), time: currentLocalTime(), notes: entry?.notes || '' });
-    setShowWalkInForm(true);
+    setActiveEntryForm('walk-in');
   };
 
   const submitWalkIn = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -270,16 +280,16 @@ export default function OperationsDashboard() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'walk_in', name: walkInForm.name, phone: walkInForm.phone, partySize: Number(walkInForm.partySize), date: data.date, time: walkInForm.time, notes: walkInForm.notes, ...(walkInWaitlistId ? { waitlistId: walkInWaitlistId } : {}) }),
-    }), 'Walk-in registrado. Use “Mesas” na timeline para alocar uma mesa.');
+    }), 'Chegada registrada. Agora indique uma mesa nos atendimentos do dia.');
     if (result) {
-      setShowWalkInForm(false);
+      setActiveEntryForm(null);
       setWalkInWaitlistId('');
     }
   };
 
   const updateWaitlist = async (entry: WaitlistEntry, actionName: string) => {
-    const labels: Record<string, string> = { call_waitlist: 'Cliente chamado.', return_waitlist: 'Cliente voltou para a fila.', leave_waitlist: 'Entrada marcada como saída.', cancel_waitlist: 'Entrada cancelada.' };
-    if (actionName === 'cancel_waitlist' && !window.confirm(`Cancelar a entrada de ${entry.name} na fila?`)) return;
+    const labels: Record<string, string> = { call_waitlist: 'Pessoa chamada para a mesa.', return_waitlist: 'Pessoa voltou para aguardando mesa.', leave_waitlist: 'Saída registrada.', cancel_waitlist: 'Cadastro removido da lista de espera.' };
+    if (actionName === 'cancel_waitlist' && !window.confirm(`Remover ${entry.name} da lista de espera?`)) return;
     await runOperation(`${entry.id}:${actionName}`, () => fetch('/api/admin/operations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -304,59 +314,64 @@ export default function OperationsDashboard() {
     </>}
   </div>;
 
-  return <div className="space-y-6">
-    <div className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
+  return <div className="space-y-4 sm:space-y-6">
+    <div className="rounded-2xl border border-[#D9CFC1] bg-white p-4 sm:rounded-3xl sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Operação de hoje</h2>
-          <p className="text-sm text-[#4A3728]/60">{formatDate(data.date)} · Recepção, mesas e capacidade por turno comercial.</p>
+          <h2 className="text-lg font-bold sm:text-xl">Operação de hoje</h2>
+          <p className="break-words text-xs text-[#4A3728]/60 sm:text-sm">{formatDate(data.date)} · Recepção, mesas e capacidade por turno comercial.</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={refreshing} className="rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-bold text-[#4A3728] disabled:opacity-50" aria-label="Atualizar operação">
+        <button type="button" onClick={() => void load()} disabled={refreshing} className="min-h-11 min-w-11 rounded-xl border border-[#D9CFC1] p-3 text-xs font-bold text-[#4A3728] disabled:opacity-50" aria-label="Atualizar operação">
           {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
         </button>
       </div>
-      <div className="mt-4 flex items-center gap-2 rounded-xl bg-[#F5F2ED] px-4">
-        <Search size={16} className="shrink-0 text-[#4A3728]/50" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, telefone ou horário" className="w-full bg-transparent py-3 text-sm outline-none" />
-        <select aria-label="Filtrar reservas por status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="max-w-36 bg-transparent py-3 text-xs outline-none">
+      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#F5F2ED] px-3 sm:flex-row sm:items-center sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <Search size={16} className="shrink-0 text-[#4A3728]/50" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, telefone ou horário" className="min-h-11 w-full min-w-0 bg-transparent py-3 text-sm outline-none" />
+        </div>
+        <select aria-label="Filtrar reservas por status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 w-full border-t border-[#D9CFC1]/60 bg-transparent py-2 text-sm outline-none sm:w-auto sm:max-w-40 sm:border-0 sm:text-xs">
           <option value="all">Todos</option>
           <option value="pending">Pendentes</option>
           <option value="confirmed">Confirmadas</option>
           <option value="seated">Sentadas</option>
           <option value="completed">Concluídas</option>
-          <option value="no_show">No-show</option>
+          <option value="no_show">Não compareceu</option>
           <option value="cancelled">Canceladas</option>
         </select>
       </div>
       {(loadError || feedback) && <p role="status" className="mt-3 rounded-xl bg-[#F5F2ED] px-4 py-3 text-xs text-[#4A3728]">{feedback || loadError}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => setShowWalkInForm((current) => !current)} className="rounded-xl bg-[#4A3728] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white">Registrar walk-in</button>
-        <button type="button" onClick={() => setShowWaitlistForm((current) => !current)} className="rounded-xl border border-[#4A3728]/20 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-[#4A3728]">Adicionar à fila</button>
+      <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+        <button type="button" aria-expanded={activeEntryForm === 'walk-in'} aria-controls="walk-in-form" onClick={() => setActiveEntryForm((current) => current === 'walk-in' ? null : 'walk-in')} className="min-h-11 w-full rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase tracking-wide text-white sm:w-auto sm:text-[10px] sm:tracking-widest">Registrar pessoa sem reserva</button>
+        <button type="button" aria-expanded={activeEntryForm === 'waitlist'} aria-controls="waitlist-form" onClick={() => setActiveEntryForm((current) => current === 'waitlist' ? null : 'waitlist')} className="min-h-11 w-full rounded-xl border border-[#4A3728]/20 px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#4A3728] sm:w-auto sm:text-[10px] sm:tracking-widest">Adicionar à lista de espera</button>
       </div>
+      <p className="mt-3 text-xs leading-relaxed text-[#4A3728]/60">Chegou sem reserva e já há mesa? Registre o atendimento. Se o grupo precisar esperar, adicione-o à lista de espera. Quando uma mesa liberar, chame o grupo e registre o atendimento.</p>
     </div>
 
-    {showWalkInForm && <form onSubmit={(event) => void submitWalkIn(event)} className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
-      <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{walkInWaitlistId ? 'Registrar cliente da fila como walk-in' : 'Novo walk-in'}</h3><button type="button" onClick={() => setShowWalkInForm(false)} aria-label="Fechar"><X size={18} /></button></div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <input required minLength={2} maxLength={120} value={walkInForm.name} onChange={(event) => setWalkInForm({ ...walkInForm, name: event.target.value })} placeholder="Nome" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input required type="tel" value={walkInForm.phone} onChange={(event) => setWalkInForm({ ...walkInForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input required type="number" min="1" max="30" value={walkInForm.partySize} onChange={(event) => setWalkInForm({ ...walkInForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input required type="time" value={walkInForm.time} onChange={(event) => setWalkInForm({ ...walkInForm, time: event.target.value })} aria-label="Horário do walk-in" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input value={walkInForm.notes} onChange={(event) => setWalkInForm({ ...walkInForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm sm:col-span-2" />
-        <button type="submit" disabled={busyKey === 'walk-in:create'} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{busyKey === 'walk-in:create' ? 'Registrando...' : 'Confirmar walk-in'}</button>
+    {activeEntryForm === 'walk-in' && <form id="walk-in-form" onSubmit={(event) => void submitWalkIn(event)} className="rounded-2xl border border-[#D9CFC1] bg-white p-4 sm:rounded-3xl sm:p-6">
+      <div className="mb-2 flex items-center justify-between gap-3"><h3 className="font-bold">{walkInWaitlistId ? 'Registrar atendimento da lista de espera' : 'Registrar chegada sem reserva'}</h3><button type="button" onClick={() => setActiveEntryForm(null)} aria-label="Fechar formulário de chegada" title="Fechar" className="shrink-0 rounded-lg p-2 hover:bg-[#F5F2ED]"><X size={18} /></button></div>
+      <p className="mb-4 text-xs text-[#4A3728]/60">Use para registrar uma pessoa que chegou sem reserva ou um grupo da lista de espera que agora será atendido. Depois, indique a mesa nos atendimentos do dia.</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <input required minLength={2} maxLength={120} value={walkInForm.name} onChange={(event) => setWalkInForm({ ...walkInForm, name: event.target.value })} placeholder="Nome" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="tel" value={walkInForm.phone} onChange={(event) => setWalkInForm({ ...walkInForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="number" min="1" max="30" value={walkInForm.partySize} onChange={(event) => setWalkInForm({ ...walkInForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="time" value={walkInForm.time} onChange={(event) => setWalkInForm({ ...walkInForm, time: event.target.value })} aria-label="Horário de chegada" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input value={walkInForm.notes} onChange={(event) => setWalkInForm({ ...walkInForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm sm:col-span-2" />
+        <button type="submit" disabled={busyKey === 'walk-in:create'} className="min-h-11 w-full rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50 sm:col-span-2 xl:col-span-1">{busyKey === 'walk-in:create' ? 'Registrando...' : 'Registrar chegada'}</button>
       </div>
-      <p className="mt-3 text-xs text-[#4A3728]/60">O walk-in será registrado para {formatDate(data.date)}. A alocação pode ser feita pela timeline.</p>
+      <p className="mt-3 text-xs text-[#4A3728]/60">Este atendimento será registrado para {formatDate(data.date)}.</p>
     </form>}
 
-    {showWaitlistForm && <form onSubmit={(event) => void submitWaitlist(event)} className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
-      <h3 className="mb-4 font-bold">Adicionar cliente à fila</h3>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <input required minLength={2} maxLength={120} value={waitlistForm.name} onChange={(event) => setWaitlistForm({ ...waitlistForm, name: event.target.value })} placeholder="Nome" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input required type="tel" value={waitlistForm.phone} onChange={(event) => setWaitlistForm({ ...waitlistForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <input required type="number" min="1" max="30" value={waitlistForm.partySize} onChange={(event) => setWaitlistForm({ ...waitlistForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <select value={waitlistForm.preferredAreaId} onChange={(event) => setWaitlistForm({ ...waitlistForm, preferredAreaId: event.target.value })} className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm"><option value="">Qualquer área</option>{data.areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select>
-        <input value={waitlistForm.notes} onChange={(event) => setWaitlistForm({ ...waitlistForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
-        <button type="submit" disabled={busyKey === 'waitlist:create'} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{busyKey === 'waitlist:create' ? 'Adicionando...' : 'Adicionar à fila'}</button>
+    {activeEntryForm === 'waitlist' && <form id="waitlist-form" onSubmit={(event) => void submitWaitlist(event)} className="rounded-2xl border border-[#D9CFC1] bg-white p-4 sm:rounded-3xl sm:p-6">
+      <div className="mb-2 flex items-center justify-between gap-3"><h3 className="font-bold">Adicionar grupo à lista de espera</h3><button type="button" onClick={() => setActiveEntryForm(null)} aria-label="Fechar formulário da lista de espera" title="Fechar" className="shrink-0 rounded-lg p-2 hover:bg-[#F5F2ED]"><X size={18} /></button></div>
+      <p className="mb-4 text-xs text-[#4A3728]/60">Use quando o grupo chegou, mas ainda não há mesa disponível. Quando uma mesa liberar, chame o grupo e registre o atendimento.</p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <input required minLength={2} maxLength={120} value={waitlistForm.name} onChange={(event) => setWaitlistForm({ ...waitlistForm, name: event.target.value })} placeholder="Nome" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="tel" value={waitlistForm.phone} onChange={(event) => setWaitlistForm({ ...waitlistForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="number" min="1" max="30" value={waitlistForm.partySize} onChange={(event) => setWaitlistForm({ ...waitlistForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <select value={waitlistForm.preferredAreaId} onChange={(event) => setWaitlistForm({ ...waitlistForm, preferredAreaId: event.target.value })} className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm"><option value="">Qualquer área</option>{data.areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select>
+        <input value={waitlistForm.notes} onChange={(event) => setWaitlistForm({ ...waitlistForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="min-h-11 w-full min-w-0 rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <button type="submit" disabled={busyKey === 'waitlist:create'} className="min-h-11 w-full rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{busyKey === 'waitlist:create' ? 'Adicionando...' : 'Adicionar à lista de espera'}</button>
       </div>
     </form>}
 
@@ -378,15 +393,53 @@ export default function OperationsDashboard() {
       })}
     </section>
 
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <section aria-label="Acompanhamento da portaria" className="space-y-3">
+      <div>
+        <h3 className="text-lg font-bold">Portaria</h3>
+        <p className="text-xs text-[#4A3728]/60">Acompanhe a chegada e o atendimento dos grupos.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {receptionLanes.map((lane) => {
+          const guests = lane.items.reduce((sum, item) => sum + item.num_guests, 0);
+          return <section key={lane.key} className="overflow-hidden rounded-2xl border border-[#D9CFC1] bg-white">
+            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#D9CFC1] p-3 sm:p-4">
+              <h4 className="text-sm font-bold">{lane.title}</h4>
+              <span className="rounded-full bg-[#F5F2ED] px-2.5 py-1 text-xs font-bold">{lane.items.length} grupos · {guests} pessoas</span>
+            </header>
+            {lane.items.length === 0 ? <p className="p-4 text-xs text-[#4A3728]/55">Nenhum grupo nesta etapa.</p> : lane.items.map((item) => {
+              const itemStatus = item.status.toLowerCase();
+              const assignments = assignmentsByReservation.get(item.id) || [];
+              const busy = busyKey !== '';
+              return <article key={item.id} className="border-b border-[#D9CFC1]/50 p-3 last:border-b-0 sm:p-4">
+                <div className="flex min-w-0 flex-col gap-3">
+                  <div className="min-w-0 break-words">
+                    <p className="font-bold">{item.reservation_time.slice(0, 5)} · {item.name}</p>
+              <p className="mt-1 text-xs text-[#4A3728]/65">{item.num_guests} pessoas · {item.source === 'walk_in' ? 'Chegou sem reserva' : 'Com reserva'}</p>
+                    {item.arrived_at && <p className="mt-1 text-xs text-[#4A3728]/60">Chegou às {new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(item.arrived_at))}</p>}
+                    {assignments.length > 0 && <p className="mt-1 text-xs font-bold text-[#4A3728]">Mesa: {assignments.map((assignment) => assignment.restaurant_tables?.code || assignment.table_id).join(', ')}</p>}
+                  </div>
+                  {lane.key === 'expected' && <button type="button" disabled={busy} onClick={() => void action(item, 'arrive')} className="min-h-11 w-full rounded-xl bg-[#4A3728] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busyKey === `${item.id}:arrive` ? 'Registrando…' : 'Registrar chegada'}</button>}
+                  {lane.key === 'arrived' && itemStatus === 'confirmed' && <button type="button" disabled={busy} onClick={() => void action(item, 'seat')} className="min-h-11 w-full rounded-xl bg-[#4A3728] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Sentar</button>}
+                  {lane.key === 'arrived' && itemStatus === 'pending' && <button type="button" disabled={busy} onClick={() => void action(item, 'confirm')} className="min-h-11 w-full rounded-xl border border-[#4A3728]/20 px-4 py-3 text-sm font-bold text-[#4A3728] disabled:opacity-50">Confirmar</button>}
+                  {lane.key === 'seated' && <button type="button" disabled={busy} onClick={() => void action(item, 'complete')} className="min-h-11 w-full rounded-xl border border-[#4A3728]/20 px-4 py-3 text-sm font-bold text-[#4A3728] disabled:opacity-50">Finalizar</button>}
+                </div>
+                {item.notes && <p className="mt-2 text-xs text-[#4A3728]/60">Obs.: {item.notes}</p>}
+              </article>;
+            })}
+          </section>;
+        })}
+      </div>
+    </section>
+
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
       <Metric label="Reservas" value={reservations.length} />
-      <Metric label="Pessoas em cota" value={people} />
+      <Metric label="Pessoas com reserva" value={people} />
       <Metric label="Chegaram" value={reservations.filter((item) => item.arrived_at).length} />
       <Metric label="Sentadas" value={count(['seated'])} />
       <Metric label="Concluídas" value={count(['completed', 'concluido'])} />
-      <Metric label="No-show" value={count(['no_show'])} />
+      <Metric label="Não compareceram" value={count(['no_show'])} />
       <Metric label="Canceladas" value={count(['cancelled', 'cancelado'])} />
-      <Metric label="Fila" value={data.waitlist.length} />
+      <Metric label="Lista de espera" value={data.waitlist.length} />
     </div>
 
     <section className="rounded-3xl border border-[#D9CFC1] bg-white">
@@ -399,7 +452,7 @@ export default function OperationsDashboard() {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <span className="font-bold">{item.reservation_time.slice(0, 5)} · {item.name}</span>
-              <p className="mt-1 text-xs text-[#4A3728]/70">{item.num_guests} pessoas · {statusLabel(status)} · {item.source === 'walk_in' ? 'Walk-in' : 'Reserva'}</p>
+              <p className="mt-1 text-xs text-[#4A3728]/70">{item.num_guests} pessoas · {statusLabel(status)} · {item.source === 'walk_in' ? 'Chegou sem reserva' : 'Com reserva'}</p>
               <p className="mt-1 text-xs text-[#4A3728]/60">{item.whatsapp}{item.commercial_turn ? ` · ${item.commercial_turn === 'lunch' ? 'Almoço' : item.commercial_turn === 'dinner' ? 'Jantar' : item.commercial_turn}` : ''}</p>
               {item.arrived_at && <p className="mt-1 text-xs text-[#4A3728]/60">Chegada registrada às {new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(item.arrived_at))}</p>}
               {item.notes && <p className="mt-1 text-xs text-[#4A3728]/60">Obs.: {item.notes}</p>}
@@ -408,13 +461,13 @@ export default function OperationsDashboard() {
             <span className="text-xs text-[#4A3728]/50">{item.payment_status === 'paid' ? 'Pago' : item.payment_status === 'pending' ? 'Pagamento pendente' : ''}</span>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {status === 'pending' && <button disabled={busy} onClick={() => void action(item, 'confirm')}>Confirmar</button>}
-            {!item.arrived_at && ['pending', 'confirmed'].includes(status) && <button disabled={busy} onClick={() => void action(item, 'arrive')}>Chegou</button>}
-            {status === 'confirmed' && <button disabled={busy} onClick={() => void action(item, 'seat')}>Sentar</button>}
-            {status === 'seated' && <button disabled={busy} onClick={() => void action(item, 'complete')}>Finalizar</button>}
-            {status === 'confirmed' && <button disabled={busy} onClick={() => void action(item, 'no_show')}>No-show</button>}
-            {['pending', 'confirmed'].includes(status) && <button disabled={busy} onClick={() => void action(item, 'cancel')}>Cancelar</button>}
-            {['pending', 'confirmed', 'seated'].includes(status) && <button type="button" onClick={() => setExpandedReservationId((current) => current === item.id ? '' : item.id)} title="Ver e alocar mesas" aria-label={`Alocar mesas para ${item.name}`} className="ml-auto text-[#4A3728]/70"><TableProperties size={18} /></button>}
+            {status === 'pending' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void action(item, 'confirm')}>Confirmar</button>}
+            {!item.arrived_at && ['pending', 'confirmed'].includes(status) && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void action(item, 'arrive')}>Registrar chegada</button>}
+            {status === 'confirmed' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void action(item, 'seat')}>Sentar</button>}
+            {status === 'seated' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void action(item, 'complete')}>Finalizar</button>}
+            {status === 'confirmed' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void action(item, 'no_show')}>Marcar falta</button>}
+            {['pending', 'confirmed'].includes(status) && <button className="min-h-11 rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-800" disabled={busy} onClick={() => void action(item, 'cancel')}>Cancelar</button>}
+            {['pending', 'confirmed', 'seated'].includes(status) && <button type="button" onClick={() => setExpandedReservationId((current) => current === item.id ? '' : item.id)} title="Ver e alocar mesas" aria-label={`Alocar mesas para ${item.name}`} className="ml-auto flex min-h-11 min-w-11 items-center justify-center rounded-xl text-[#4A3728]/70"><TableProperties size={18} /></button>}
           </div>
           {expandedReservationId === item.id && <ReservationTableAllocator reservationId={item.id} onSaved={() => void load(true)} />}
         </article>;
@@ -422,18 +475,19 @@ export default function OperationsDashboard() {
     </section>
 
     <section className="rounded-3xl border border-[#D9CFC1] bg-white">
-      <header className="flex items-center justify-between border-b border-[#D9CFC1] p-5 font-bold"><span><Users className="mr-2 inline" size={17} />Fila de espera</span><span className="text-xs font-normal text-[#4A3728]/60">{data.waitlist.length}</span></header>
-      {data.waitlist.length === 0 ? <p className="p-6 text-sm text-[#4A3728]/60">A fila está vazia.</p> : data.waitlist.map((entry) => {
+      <header className="flex items-center justify-between border-b border-[#D9CFC1] p-5 font-bold"><span><Users className="mr-2 inline" size={17} />Lista de espera</span><span className="text-xs font-normal text-[#4A3728]/60">{data.waitlist.length}</span></header>
+      <p className="px-5 pt-3 text-xs text-[#4A3728]/60">Aqui ficam os grupos que estão esperando mesa. Quando uma mesa liberar, clique em “Chamar para a mesa”. Quando o grupo vier, clique em “Registrar atendimento”; depois, indique a mesa.</p>
+      {data.waitlist.length === 0 ? <p className="p-6 text-sm text-[#4A3728]/60">Ninguém aguardando mesa.</p> : data.waitlist.map((entry) => {
         const busy = busyKey !== '';
         const areaName = data.areas.find((area) => area.id === entry.preferred_area_id)?.name;
         return <div key={entry.id} className="border-b border-[#D9CFC1]/50 p-4 text-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold">{entry.name} · {entry.party_size} pessoas</p><p className="mt-1 text-xs text-[#4A3728]/60">{entry.phone} · {entry.status === 'called' ? 'Chamado' : 'Aguardando'}{areaName ? ` · ${areaName}` : ''}</p>{entry.notes && <p className="mt-1 text-xs text-[#4A3728]/60">Obs.: {entry.notes}</p>}</div><span className="text-xs text-[#4A3728]/50">{new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.created_at))}</span></div>
+          <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold">{entry.name} · {entry.party_size} pessoas</p><p className="mt-1 text-xs text-[#4A3728]/60">{entry.phone} · {entry.status === 'called' ? 'Chamado para a mesa' : 'Aguardando mesa'}{areaName ? ` · Preferência: ${areaName}` : ''}</p>{entry.notes && <p className="mt-1 text-xs text-[#4A3728]/60">Obs.: {entry.notes}</p>}</div><span className="text-xs text-[#4A3728]/50">{new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.created_at))}</span></div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {entry.status === 'waiting' && <button disabled={busy} onClick={() => void updateWaitlist(entry, 'call_waitlist')}>Chamar</button>}
-            {entry.status === 'called' && <button disabled={busy} onClick={() => void updateWaitlist(entry, 'return_waitlist')}>Voltar para fila</button>}
-            <button disabled={busy} onClick={() => openWalkIn(entry)}>Registrar walk-in</button>
-            <button disabled={busy} onClick={() => void updateWaitlist(entry, 'leave_waitlist')}>Saiu</button>
-            <button disabled={busy} onClick={() => void updateWaitlist(entry, 'cancel_waitlist')}>Cancelar</button>
+            {entry.status === 'waiting' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void updateWaitlist(entry, 'call_waitlist')}>Chamar para a mesa</button>}
+            {entry.status === 'called' && <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void updateWaitlist(entry, 'return_waitlist')}>Voltar para aguardando</button>}
+            <button className="min-h-11 rounded-xl bg-[#4A3728] px-3 py-2 text-xs font-semibold text-white" disabled={busy} onClick={() => openWalkIn(entry)}>Registrar atendimento</button>
+            <button className="min-h-11 rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-semibold" disabled={busy} onClick={() => void updateWaitlist(entry, 'leave_waitlist')}>Registrar saída</button>
+            <button className="min-h-11 rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-800" disabled={busy} onClick={() => void updateWaitlist(entry, 'cancel_waitlist')}>Remover da lista</button>
           </div>
         </div>;
       })}
