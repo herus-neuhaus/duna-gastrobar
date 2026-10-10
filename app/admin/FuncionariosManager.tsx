@@ -7,6 +7,9 @@ import { Database } from '@/lib/supabase/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Role = Database['public']['Tables']['employee_roles']['Row'];
+type CapacityPermissionProfile = { id: string; full_name: string | null; email: string | null; role: string | null };
+type CapacityPermission = { profile_id: string; revoked_at: string | null };
+type CapacityPermissionAudit = { id: string; profile_id: string; action: string; reason: string; created_at: string };
 
 export default function FuncionariosManager() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -31,6 +34,14 @@ export default function FuncionariosManager() {
 
   // Status updates
   const [updating, setUpdating] = useState<string | null>(null);
+  const [capacityProfiles, setCapacityProfiles] = useState<CapacityPermissionProfile[]>([]);
+  const [capacityPermissions, setCapacityPermissions] = useState<CapacityPermission[]>([]);
+  const [capacityAudits, setCapacityAudits] = useState<CapacityPermissionAudit[]>([]);
+  const [capacityTarget, setCapacityTarget] = useState('');
+  const [capacityReason, setCapacityReason] = useState('');
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [capacityError, setCapacityError] = useState('');
+  const [capacityBusy, setCapacityBusy] = useState(false);
   
   const [supabase] = useState(createClient);
 
@@ -54,6 +65,49 @@ export default function FuncionariosManager() {
 
     return () => window.clearTimeout(timeout);
   }, [fetchData]);
+
+  const fetchCapacityPermissions = React.useCallback(async () => {
+    const response = await fetch('/api/admin/capacity-permissions', { cache: 'no-store' });
+    if (!response.ok) return;
+    const result = await response.json();
+    setCapacityProfiles(result.profiles || []);
+    setCapacityPermissions(result.permissions || []);
+    setCapacityAudits(result.audits || []);
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || ''));
+      void fetchCapacityPermissions();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [fetchCapacityPermissions, supabase]);
+
+  const updateCapacityPermission = async (granted: boolean, profileId: string) => {
+    if (!capacityReason.trim()) {
+      setCapacityError('Informe o motivo da concessão ou revogação.');
+      return;
+    }
+    setCapacityBusy(true);
+    setCapacityError('');
+    try {
+      const response = await fetch('/api/admin/capacity-permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId, granted, reason: capacityReason }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível alterar a permissão.');
+      setCapacityReason('');
+      setCapacityTarget('');
+      await fetchCapacityPermissions();
+    } catch (error) {
+      setCapacityError(error instanceof Error ? error.message : 'Não foi possível alterar a permissão.');
+    } finally {
+      setCapacityBusy(false);
+    }
+  };
 
   const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,6 +206,32 @@ export default function FuncionariosManager() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {capacityProfiles.length > 0 && <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+        <div className="mb-5">
+          <h3 className="font-bold text-lg text-amber-950">Permissão para exceder capacidade</h3>
+          <p className="mt-1 text-xs text-amber-900/75">Somente o dono concede ou revoga. Cada uso ainda exige ação explícita e motivo; isso não autoriza horário fora da agenda.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_auto]">
+          <select value={capacityTarget} onChange={(event) => setCapacityTarget(event.target.value)} className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm">
+            <option value="">Selecione uma pessoa da equipe</option>
+            {capacityProfiles.filter((profile) => profile.id !== currentUserId).map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name || profile.email || profile.id} · {profile.role}</option>)}
+          </select>
+          <input value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} maxLength={1000} placeholder="Motivo obrigatório da alteração" className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm" />
+          <button type="button" disabled={!capacityTarget || !capacityReason.trim() || capacityBusy} onClick={() => void updateCapacityPermission(true, capacityTarget)} className="rounded-xl bg-[#4A3728] px-5 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">Conceder</button>
+        </div>
+        {capacityError && <p className="mt-3 text-sm text-red-700">{capacityError}</p>}
+        <div className="mt-5 space-y-2">
+          {capacityProfiles.filter((profile) => profile.id !== currentUserId && capacityPermissions.some((permission) => permission.profile_id === profile.id && !permission.revoked_at)).map((profile) => <div key={profile.id} className="flex items-center justify-between rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm">
+            <span>{profile.full_name || profile.email || profile.id} · {profile.role}</span>
+            <button type="button" disabled={capacityBusy} onClick={() => { setCapacityTarget(profile.id); void updateCapacityPermission(false, profile.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50">Revogar</button>
+          </div>)}
+        </div>
+        {capacityAudits.length > 0 && <details className="mt-4 text-xs text-amber-950">
+          <summary className="cursor-pointer font-bold">Histórico de concessões e revogações ({capacityAudits.length})</summary>
+          <ul className="mt-2 space-y-1">{capacityAudits.map((audit) => <li key={audit.id}>{new Date(audit.created_at).toLocaleString('pt-BR')} · {audit.action} · {capacityProfiles.find((profile) => profile.id === audit.profile_id)?.full_name || audit.profile_id} · {audit.reason}</li>)}</ul>
+        </details>}
+      </section>}
       
       {/* Roles Section */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#D9CFC1]">

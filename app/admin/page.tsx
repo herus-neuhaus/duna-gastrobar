@@ -204,7 +204,13 @@ function ReservationsView() {
   });
   const totalReservations = activeReservations.length;
   
-  const totalGuests = activeReservations.reduce((acc, curr) => acc + (curr.num_guests || 0), 0);
+  const capacityReservations = reservations.filter((reservation) => (
+    reservation.source !== 'walk_in' && !['cancelled', 'cancelado'].includes((reservation.status || 'pending').toLowerCase())
+  ));
+  const guestsByCommercialTurn = {
+    lunch: capacityReservations.filter((reservation) => reservation.commercial_turn === 'lunch').reduce((sum, reservation) => sum + (reservation.num_guests || 0), 0),
+    dinner: capacityReservations.filter((reservation) => reservation.commercial_turn === 'dinner').reduce((sum, reservation) => sum + (reservation.num_guests || 0), 0),
+  };
   const pendingReservations = activeReservations.filter((reservation) => (
     (reservation.status || 'pending').toLowerCase() === 'pending'
   )).length;
@@ -340,34 +346,25 @@ function ReservationsView() {
             <p className="text-2xl font-bold">{loading ? '...' : totalReservations}</p>
           </div>
         </div>
-        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-            <div className="flex items-center gap-4 w-full">
-              <div className="p-3 bg-[#F5F2ED] rounded-2xl text-[#4A3728]">
-                <Users size={24} />
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/50 mb-1">Total Pessoas</p>
-                <div className="flex items-end gap-2">
-                  <span className={`text-2xl font-serif font-bold ${(startDate === endDate && totalGuests >= 80) ? 'text-red-600' : 'text-[#4A3728]'}`}>
-                    {loading ? '...' : totalGuests}
-                  </span>
-                  {startDate === endDate ? (
-                    <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">/ 80 limite</span>
-                  ) : (
-                    <span className="text-[10px] text-[#4A3728]/40 mb-1.5 font-medium">(80 limite/dia)</span>
-                  )}
+        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1]">
+          <div className="mb-3 flex items-center gap-3">
+            <div className="p-2.5 bg-[#F5F2ED] rounded-xl text-[#4A3728]"><Users size={20} /></div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/50">Pessoas por turno {startDate !== endDate && '(período)'}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {(['lunch', 'dinner'] as const).map((turn) => {
+              const guests = guestsByCommercialTurn[turn];
+              return <div key={turn}>
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className="text-[9px] font-bold uppercase text-[#4A3728]/60">{turn === 'lunch' ? 'Almoço' : 'Jantar'}</span>
+                  <span className={`text-lg font-serif font-bold ${guests >= 80 ? 'text-red-600' : 'text-[#4A3728]'}`}>{loading ? '…' : guests}<small className="ml-1 text-[9px] font-medium text-[#4A3728]/40">/ 80</small></span>
                 </div>
-                {/* Barra de progresso de capacidade (apenas para um único dia) */}
-                {startDate === endDate && (
-                  <div className="mt-2 w-full h-1.5 bg-[#EBE3D5] rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-500 ${totalGuests >= 80 ? 'bg-red-500' : totalGuests >= 60 ? 'bg-amber-500' : 'bg-[#4A3728]'}`}
-                      style={{ width: `${Math.min((totalGuests / 80) * 100, 100)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#EBE3D5]">
+                  <div className={`h-full ${guests >= 80 ? 'bg-red-500' : guests >= 60 ? 'bg-amber-500' : 'bg-[#4A3728]'}`} style={{ width: `${Math.min(100, guests / 80 * 100)}%` }} />
+                </div>
+              </div>;
+            })}
+          </div>
         </div>
         <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
           <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingReservations > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>
@@ -602,6 +599,9 @@ function NewReservationView() {
     notes: '',
     decorationId: '',
     specialDateId: '',
+    capacityOverrideReason: '',
+    scheduleOverrideReason: '',
+    commercialTurn: 'dinner',
   });
   const [decorations, setDecorations] = useState<Decoration[]>([]);
   const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
@@ -677,13 +677,16 @@ function NewReservationView() {
           notes: form.notes,
           decorationId: form.decorationId || null,
           specialDateId: form.specialDateId || null,
+          capacityOverrideReason: form.capacityOverrideReason || null,
+          scheduleOverrideReason: form.scheduleOverrideReason || null,
+          commercialTurn: form.scheduleOverrideReason ? form.commercialTurn : null,
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Não foi possível criar a reserva.');
 
       setMessage('Reserva criada como pendente e disponível no monitor.');
-      setForm((currentForm) => ({ ...currentForm, name: '', email: '', whatsapp: '', cpf: '', notes: '', decorationId: '', specialDateId: currentForm.specialDateId }));
+      setForm((currentForm) => ({ ...currentForm, name: '', email: '', whatsapp: '', cpf: '', notes: '', decorationId: '', specialDateId: currentForm.specialDateId, capacityOverrideReason: '', scheduleOverrideReason: '' }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Não foi possível criar a reserva.');
     } finally {
@@ -741,6 +744,27 @@ function NewReservationView() {
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Ocasião ou observação</span>
           <textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} maxLength={1000} className="min-h-24 w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Ex.: Aniversário" />
         </label>
+        <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-800">Exceções autorizadas</p>
+          <p className="mt-1 text-xs text-amber-900/70">Somente o dono pode registrar uma exceção. O motivo e o efeito ficam auditados.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Exceder capacidade</span>
+              <input value={form.capacityOverrideReason} onChange={(event) => updateField('capacityOverrideReason', event.target.value)} maxLength={1000} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700" placeholder="Motivo obrigatório" />
+            </label>
+            <label>
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Fora do horário</span>
+              <input value={form.scheduleOverrideReason} onChange={(event) => updateField('scheduleOverrideReason', event.target.value)} maxLength={1000} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700" placeholder="Motivo obrigatório" />
+            </label>
+            {form.scheduleOverrideReason && <label>
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Turno de referência</span>
+              <select value={form.commercialTurn} onChange={(event) => updateField('commercialTurn', event.target.value)} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700">
+                <option value="lunch">Almoço</option>
+                <option value="dinner">Jantar</option>
+              </select>
+            </label>}
+          </div>
+        </div>
         {decorations.length > 0 && <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Decoração</span>
           <select value={form.decorationId} onChange={(event) => updateField('decorationId', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]">

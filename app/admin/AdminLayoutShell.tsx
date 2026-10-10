@@ -25,31 +25,40 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
-  const supabase = createClient();
+  const [authError, setAuthError] = useState('');
+  const [supabase] = useState(() => createClient());
   const router = useRouter();
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+      setAuthError('');
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        if (!user) {
+          router.push('/login');
+          return;
+        }
 
-      setUserEmail(user.email || null);
-      setUserId(user.id);
+        setUserEmail(user.email || null);
+        setUserId(user.id);
       
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('force_password_change')
-        .eq('id', user.id)
-        .single();
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('force_password_change')
+          .eq('id', user.id)
+          .single();
+        if (profileError) throw profileError;
         
-      if (profile?.force_password_change) {
-        setForcePasswordChange(true);
-      }
+        if (profile?.force_password_change) {
+          setForcePasswordChange(true);
+        }
 
-      setIsAuthorized(true);
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('Falha ao verificar autenticação do painel:', error);
+        setAuthError('Não foi possível validar sua sessão. Tente novamente.');
+      }
     };
     checkAuth();
   }, [supabase, router]);
@@ -63,8 +72,11 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-[#4A3728]">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-[#4A3728] animate-spin" />
-          <p className="text-xs uppercase tracking-[0.2em] font-serif font-bold">Autenticando...</p>
+          {!authError && <Loader2 className="w-12 h-12 text-[#4A3728] animate-spin" />}
+          {authError ? <>
+            <p role="alert" className="text-center text-sm">{authError}</p>
+            <button type="button" onClick={() => window.location.reload()} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white">Tentar novamente</button>
+          </> : <p className="text-xs uppercase tracking-[0.2em] font-serif font-bold">Autenticando...</p>}
         </div>
       </div>
     );

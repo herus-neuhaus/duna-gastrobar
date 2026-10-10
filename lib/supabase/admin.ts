@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
 export function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -8,7 +9,7 @@ export function createAdminClient() {
     throw new Error('Supabase administrativo não configurado.');
   }
 
-  return createClient(supabaseUrl, supabaseSecret, {
+  return createClient<Database>(supabaseUrl, supabaseSecret, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

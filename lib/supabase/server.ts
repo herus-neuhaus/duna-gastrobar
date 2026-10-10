@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import type { Database } from './database.types'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -17,7 +18,7 @@ export async function createClient() {
     throw new Error('Use a chave publishable do Supabase, nunca uma chave secreta em NEXT_PUBLIC_.');
   }
 
-  return createServerClient(
+  return createServerClient<Database>(
     supabaseUrl,
     supabaseKey,
     {

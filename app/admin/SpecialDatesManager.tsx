@@ -46,7 +46,12 @@ export default function SpecialDatesManager() {
       .order('date', { ascending: true });
 
     if (!error && data) {
-      setDates(data);
+      setDates(data.map((date) => ({
+        ...date,
+        requires_fee: date.requires_fee ?? false,
+        fee_amount: date.fee_amount ?? 0,
+        description: date.description ?? '',
+      })));
     }
     setLoading(false);
   }, [supabase]);

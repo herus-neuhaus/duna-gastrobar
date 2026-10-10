@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { isCancelledReservation } from '@/lib/reservation-status';
-
 const CAPACITY_LIMIT = 80;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,43 +17,63 @@ export async function GET(request: Request) {
   }
 
   const today = getToday();
+  const lastPublicDate = new Date(`${today}T00:00:00Z`);
+  lastPublicDate.setUTCDate(lastPublicDate.getUTCDate() + 10);
+  const lastPublicDateString = lastPublicDate.toISOString().slice(0, 10);
   if (to < today) {
-    return NextResponse.json({ totals: {}, fullDates: [], specialDates: [], blockedDates: [] }, {
+    return NextResponse.json({ turnTotals: {}, timeTurns: {}, fullDates: [], specialDates: [], blockedDates: [], availableTimes: {} }, {
       headers: { 'Cache-Control': 'no-store' },
     });
   }
 
   const availableFrom = from < today ? today : from;
+  const availableTo = to > lastPublicDateString ? lastPublicDateString : to;
+  if (availableFrom > availableTo) {
+    return NextResponse.json({ turnTotals: {}, timeTurns: {}, fullDates: [], specialDates: [], blockedDates: [], availableTimes: {} }, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  }
 
   try {
     const supabase = createAdminClient();
-    const [reservationsResult, specialDatesResult, blockedDatesResult, timesResult] = await Promise.all([
-      supabase.from('reservations').select('reservation_date, num_guests, status').gte('reservation_date', availableFrom).lte('reservation_date', to),
-      supabase.from('special_dates').select('*').gte('date', availableFrom).lte('date', to),
-      supabase.from('blocked_dates').select('*').gte('date', availableFrom).lte('date', to),
-      supabase.rpc('get_reservation_available_times', { p_from: availableFrom, p_to: to }),
+    const [availabilityResult, specialDatesResult, blockedDatesResult] = await Promise.all([
+      supabase.rpc('get_reservation_capacity_availability', { p_from: availableFrom, p_to: availableTo }),
+      supabase.from('special_dates').select('*').gte('date', availableFrom).lte('date', availableTo),
+      supabase.from('blocked_dates').select('*').gte('date', availableFrom).lte('date', availableTo),
     ]);
 
-    if (reservationsResult.error || specialDatesResult.error || blockedDatesResult.error || timesResult.error) {
-      throw reservationsResult.error || specialDatesResult.error || blockedDatesResult.error || timesResult.error;
+    if (availabilityResult.error || specialDatesResult.error || blockedDatesResult.error) {
+      throw availabilityResult.error || specialDatesResult.error || blockedDatesResult.error;
     }
 
-    const totals: Record<string, number> = {};
-    for (const reservation of reservationsResult.data || []) {
-      if (!isCancelledReservation(reservation.status)) {
-        totals[reservation.reservation_date] = (totals[reservation.reservation_date] || 0) + (reservation.num_guests || 0);
+    const turnTotals: Record<string, number> = {};
+    const timeTurns: Record<string, Record<string, string>> = {};
+    const availableTimes: Record<string, string[]> = {};
+    const turnsByDate: Record<string, Set<string>> = {};
+    const fullTurnsByDate: Record<string, Set<string>> = {};
+    const unclassifiedDates = new Set<string>();
+    for (const slot of availabilityResult.data || []) {
+      const time = slot.reservation_time.slice(0, 5);
+      const commercialTurn = slot.commercial_turn;
+      if (!commercialTurn) continue;
+      const turnKey = `${slot.reservation_date}|${commercialTurn}`;
+      turnTotals[turnKey] = slot.occupied_guests;
+      timeTurns[slot.reservation_date] = { ...(timeTurns[slot.reservation_date] || {}), [time]: commercialTurn };
+      (turnsByDate[slot.reservation_date] ||= new Set()).add(commercialTurn);
+      if (slot.occupied_guests >= CAPACITY_LIMIT) (fullTurnsByDate[slot.reservation_date] ||= new Set()).add(commercialTurn);
+      if (slot.has_unclassified_reservation) unclassifiedDates.add(slot.reservation_date);
+      if (!slot.has_unclassified_reservation && slot.occupied_guests < CAPACITY_LIMIT) {
+        availableTimes[slot.reservation_date] = [...(availableTimes[slot.reservation_date] || []), time];
       }
     }
-
-    const availableTimes: Record<string, string[]> = {};
-    for (const slot of timesResult.data || []) {
-      const time = slot.reservation_time.slice(0, 5);
-      availableTimes[slot.reservation_date] = [...(availableTimes[slot.reservation_date] || []), time];
-    }
+    const fullDates = Object.keys(turnsByDate).filter((date) => (
+      unclassifiedDates.has(date) || turnsByDate[date].size === fullTurnsByDate[date]?.size
+    ));
 
     return NextResponse.json({
-      totals,
-      fullDates: Object.keys(totals).filter((date) => totals[date] >= CAPACITY_LIMIT),
+      turnTotals,
+      timeTurns,
+      fullDates,
       specialDates: specialDatesResult.data || [],
       blockedDates: blockedDatesResult.data || [],
       availableTimes,

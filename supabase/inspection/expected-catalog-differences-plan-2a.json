@@ -1,0 +1,17 @@
+{
+  "functions": {
+    "private.get_reservation_occupancy_window_for_slot": {
+      "body": { "after": "b1797d696f8b7c843d48972f6578261c" },
+      "contract": { "after": "28f554f777525d56b694a8851344d2d7" },
+      "reason": "Plano 2A adds a non-callable private helper so new allocations and rescheduling share the same duration, buffer and America/Porto_Velho calculation."
+    },
+    "public.get_reservation_occupancy_window": {
+      "body": { "after": "8857fd21a42c2b00a28ddb05bc198a71" },
+      "reason": "Plano 2A delegates the existing public RPC to the private helper; its RPC contract is unchanged."
+    },
+    "public.sync_reservation_table_assignments": {
+      "body": { "after": "37fc6f9b721e99b942cd43d16c1d22d9" },
+      "reason": "Plano 2A calculates from NEW reservation values and locks all active assigned tables before updating their windows."
+    }
+  }
+}

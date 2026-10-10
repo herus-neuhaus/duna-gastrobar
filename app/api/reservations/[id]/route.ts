@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { isPanelStaff } from '@/lib/auth';
 import { getBearerReservationAccessToken, hashReservationAccessToken, isReservationAccessToken } from '@/lib/reservation-access';
 
@@ -58,16 +59,43 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const reservationDate = typeof body.date === 'string' ? body.date : '';
       const reservationTime = typeof body.time === 'string' ? body.time : '';
       const guests = Number(body.guests);
+      const capacityOverrideReason = typeof body.capacityOverrideReason === 'string' ? body.capacityOverrideReason.trim() : '';
+      const scheduleOverrideReason = typeof body.scheduleOverrideReason === 'string' ? body.scheduleOverrideReason.trim() : '';
+      const commercialTurn = body.commercialTurn === 'lunch' || body.commercialTurn === 'dinner' ? body.commercialTurn : '';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reservationDate) || !/^\d{2}:\d{2}$/.test(reservationTime) || !Number.isInteger(guests)) {
         return NextResponse.json({ error: 'Dados da reserva inválidos.' }, { status: 400 });
       }
-      const { data, error } = await supabase.rpc('update_reservation_with_access_token', {
-        p_reservation_id: id,
-        p_access_token_hash: hashReservationAccessToken(accessToken),
-        p_reservation_date: reservationDate,
-        p_reservation_time: reservationTime,
-        p_num_guests: guests,
-      });
+      if (isPublicUpdate) {
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
+        const lastAvailableDate = new Date(`${today}T00:00:00Z`);
+        lastAvailableDate.setUTCDate(lastAvailableDate.getUTCDate() + 10);
+        if (reservationDate < today || reservationDate > lastAvailableDate.toISOString().slice(0, 10)) {
+          return NextResponse.json({ error: 'Data ou horário indisponível para alteração.' }, { status: 400 });
+        }
+      }
+      if ((capacityOverrideReason || scheduleOverrideReason) && !(await isPanelStaff())) {
+        return NextResponse.json({ error: 'A exceção exige uma conta autorizada da equipe.' }, { status: 403 });
+      }
+      if (scheduleOverrideReason && !commercialTurn) {
+        return NextResponse.json({ error: 'Informe o turno comercial da exceção de horário.' }, { status: 400 });
+      }
+      const { data, error } = capacityOverrideReason || scheduleOverrideReason
+        ? await (await createClient()).rpc('update_reservation_with_authorized_overrides', {
+          p_reservation_id: id,
+          p_reservation_date: reservationDate,
+          p_reservation_time: reservationTime,
+          p_num_guests: guests,
+          p_capacity_override_reason: capacityOverrideReason || null as never,
+          p_schedule_override_reason: scheduleOverrideReason || null as never,
+          p_commercial_turn: scheduleOverrideReason ? commercialTurn : null as never,
+        })
+        : await supabase.rpc('update_reservation_with_access_token', {
+          p_reservation_id: id,
+          p_access_token_hash: hashReservationAccessToken(accessToken),
+          p_reservation_date: reservationDate,
+          p_reservation_time: reservationTime,
+          p_num_guests: guests,
+        });
       if (error) throw error;
       if (!data?.[0]) return NextResponse.json({ error: 'Esta reserva não pode mais ser alterada online.' }, { status: 409 });
       return NextResponse.json({ reservation: data[0] }, { headers: { 'Cache-Control': 'no-store' } });
@@ -102,10 +130,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
   } catch (error) {
     console.error('Erro ao atualizar reserva:', error);
-    const message = error instanceof Error ? error.message : '';
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error && 'message' in error
+        ? String(error.message)
+        : '';
+    const errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+    if (errorCode === '23P01' || message.includes('reservation_table_assignments_no_overlap')) {
+      return NextResponse.json({ error: 'Uma das mesas não está disponível para o novo horário.' }, { status: 409 });
+    }
     if (message.includes('RESERVATION_TIME_UNAVAILABLE') || message.includes('RESERVATION_LEAD_TIME_NOT_MET')) {
       return NextResponse.json({ error: 'Data ou horário indisponível para alteração.' }, { status: 409 });
     }
+    if (message.includes('CAPACITY_EXCEEDED') || message.includes('RESERVATION_TURN_CLASSIFICATION_REQUIRED')) {
+      return NextResponse.json({ error: 'Não há capacidade disponível neste turno.' }, { status: 409 });
+    }
+    if (message.includes('CAPACITY_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Você não tem permissão para exceder a capacidade.' }, { status: 403 });
+    if (message.includes('CAPACITY_OVERRIDE_NOT_NEEDED')) return NextResponse.json({ error: 'A nova operação não precisa de uma exceção de capacidade.' }, { status: 400 });
+    if (message.includes('SCHEDULE_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Somente administradores ou o dono podem autorizar horário fora da agenda.' }, { status: 403 });
+    if (message.includes('SCHEDULE_OVERRIDE_NOT_NEEDED')) return NextResponse.json({ error: 'O horário escolhido está dentro da agenda; não precisa de exceção.' }, { status: 400 });
     return NextResponse.json({ error: 'Não foi possível atualizar a reserva.' }, { status: 500 });
   }
 }

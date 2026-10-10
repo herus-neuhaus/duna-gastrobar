@@ -11,7 +11,31 @@ Este é o sistema oficial de reservas e gerenciamento do Duna Cozinha & Bar, con
 ## Desenvolvimento
 
 ### Pré-requisitos
-- Node.js (v18+)
+- Node.js 22+ e npm.
+- Para reconstrução e testes PostgreSQL: Docker.
+
+### Banco e validação técnica
+
+Consulte [Plano 1 — banco, migrações e testes isolados](docs/plano-1-banco.md)
+para a fonte de verdade, bootstrap local, geração de tipos, verificações,
+diferenças do histórico remoto e pendências conhecidas.
+
+```bash
+npm ci
+npm run db:start
+npm run db:compare
+npm run db:types:check
+npm run typecheck
+npm run lint
+npm test
+npm run test:db
+npm run db:stop
+```
+
+`test:db` executa também reproduções `TODO` de dois defeitos conhecidos;
+consulte o relatório antes de interpretar seu código de saída como sucesso total.
+`db:stop` descarta somente a stack local dedicada. O bootstrap não deve ser
+aplicado ao banco existente.
 
 ### Instalação
 
@@ -23,7 +47,7 @@ Este é o sistema oficial de reservas e gerenciamento do Duna Cozinha & Bar, con
 2. Configure as variáveis de ambiente no arquivo `.env.local`:
    ```bash
    NEXT_PUBLIC_SUPABASE_URL=sua_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sua_chave_publica
    ```
 
 3. Inicie o servidor de desenvolvimento:

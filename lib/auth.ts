@@ -3,13 +3,30 @@ import { createClient } from '@/lib/supabase/server';
 export const ADMIN_ROLE = 'admin';
 export const EMPLOYEE_ROLE = 'employee';
 export const RECEPTIONIST_ROLE = 'receptionist';
+export const OWNER_ROLE = 'dono';
 
 export async function isAdmin() {
   return hasRole([ADMIN_ROLE]);
 }
 
 export async function isPanelStaff() {
-  return hasRole([ADMIN_ROLE, 'dono', 'gerente', RECEPTIONIST_ROLE, 'portaria']);
+  return hasRole([ADMIN_ROLE, OWNER_ROLE, 'gerente', RECEPTIONIST_ROLE, 'portaria']);
+}
+
+export async function isReservationOwner() {
+  return hasRole([OWNER_ROLE]);
+}
+
+export async function canOverrideReservationCapacity() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('can_override_reservation_capacity');
+  return !error && data === true;
+}
+
+export async function isReservationAdminOrOwner() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('is_reservation_admin_or_owner');
+  return !error && data === true;
 }
 
 async function hasRole(allowedRoles: string[]) {

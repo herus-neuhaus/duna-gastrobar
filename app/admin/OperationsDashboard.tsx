@@ -1,20 +1,460 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { Users, Clock, TableProperties } from 'lucide-react';
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Clock, Loader2, RefreshCw, Search, TableProperties, Users, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import ReservationTableAllocator from './ReservationTableAllocator';
+
+type CapacitySlot = {
+  reservation_time: string;
+  commercial_turn: 'lunch' | 'dinner';
+  occupied_guests: number;
+  has_unclassified_reservation: boolean;
+};
+
+type Reservation = {
+  id: string;
+  name: string;
+  whatsapp: string;
+  email: string;
+  num_guests: number;
+  reservation_time: string;
+  commercial_turn: string | null;
+  status: string;
+  payment_status: string | null;
+  payment_amount: number | null;
+  notes: string | null;
+  source: string;
+  arrived_at: string | null;
+  seated_at: string | null;
+  completed_at: string | null;
+};
+
+type Assignment = {
+  reservation_id: string;
+  table_id: string;
+  starts_at: string;
+  ends_at: string;
+  restaurant_tables: {
+    code: string;
+    restaurant_areas: { name: string } | null;
+  } | null;
+};
+
+type WaitlistEntry = {
+  id: string;
+  name: string;
+  phone: string;
+  party_size: number;
+  status: 'waiting' | 'called';
+  created_at: string;
+  preferred_area_id: string | null;
+  notes: string | null;
+};
+
+type ClassificationIssue = {
+  id: string;
+  reservation_date: string;
+  reservation_time: string;
+  num_guests: number;
+  status: string;
+  source: string;
+  commercial_turn: string | null;
+  created_at: string;
+};
+
+type OperationsData = {
+  date: string;
+  reservations: Reservation[];
+  assignments: Assignment[];
+  tables: Array<{ id: string; area_id: string; code: string; min_capacity: number; max_capacity: number; active: boolean; restaurant_areas: { name: string; active: boolean } | null }>;
+  areas: Array<{ id: string; name: string }>;
+  waitlist: WaitlistEntry[];
+  capacity: CapacitySlot[];
+  classificationIssues: ClassificationIssue[];
+  canClassifyHistoricalReservations: boolean;
+};
+
+type WaitlistForm = { name: string; phone: string; partySize: string; preferredAreaId: string; notes: string };
+type WalkInForm = { name: string; phone: string; partySize: string; time: string; notes: string };
+
+function currentLocalTime() {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Porto_Velho',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date());
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    pending: 'Pendente',
+    confirmed: 'Confirmada',
+    seated: 'Sentada',
+    completed: 'Concluída',
+    no_show: 'No-show',
+    cancelled: 'Cancelada',
+    cancelado: 'Cancelada',
+    pendente: 'Pendente',
+    confirmado: 'Confirmada',
+    concluido: 'Concluída',
+  };
+  return labels[status] || status;
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, day)));
+}
 
 export default function OperationsDashboard() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<OperationsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [feedback, setFeedback] = useState('');
   const [query, setQuery] = useState('');
-  const load = React.useEffectEvent(async () => { const response = await fetch('/api/admin/operations'); if (response.ok) setData(await response.json()); });
-  useEffect(() => { const timeout = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timeout); }, []);
-  useEffect(() => { const supabase = createClient(); const channel = supabase.channel('daily-operations').on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => void load()).on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_table_assignments' }, () => void load()).on('postgres_changes', { event: '*', schema: 'public', table: 'waitlist_entries' }, () => void load()).subscribe(); return () => { void supabase.removeChannel(channel); }; }, []);
-  if (!data) return <p className="p-8 text-sm">Carregando operação...</p>;
-  const reservations = data.reservations || [];
-  const count = (status: string) => reservations.filter((item: any) => item.status === status).length;
-  const people = reservations.filter((item: any) => !['cancelled','no_show'].includes(item.status)).reduce((sum: number, item: any) => sum + item.num_guests, 0);
-  const action = async (id:string, action:string) => { await fetch(`/api/reservations/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action}) }); await load(); };
-  const visible = reservations.filter((item:any) => `${item.name} ${item.whatsapp} ${item.reservation_time}`.toLowerCase().includes(query.toLowerCase()));
-  return <div className="space-y-6"><div className="rounded-3xl bg-white p-6 border border-[#D9CFC1]"><h2 className="text-xl font-bold">Operação de hoje</h2><p className="text-sm text-[#4A3728]/60">Recepção, mesas e próximos atendimentos.</p><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar nome, telefone ou horário" className="mt-4 w-full rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm"/></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><Metric label="Reservas" value={reservations.length}/><Metric label="Pessoas" value={people}/><Metric label="Chegaram" value={reservations.filter((item:any)=>item.arrived_at).length}/><Metric label="Sentadas" value={count('seated')}/><Metric label="Concluídas" value={count('completed')}/><Metric label="No-show" value={count('no_show')}/><Metric label="Canceladas" value={count('cancelled')}/><Metric label="Fila" value={(data.waitlist||[]).length}/></div><section className="rounded-3xl border border-[#D9CFC1] bg-white"><header className="border-b border-[#D9CFC1] p-5 font-bold"><Clock className="mr-2 inline" size={17}/>Timeline</header>{visible.map((item:any)=><div key={item.id} className="border-b border-[#D9CFC1]/50 p-4 text-sm"><div className="flex items-center justify-between"><span className="font-bold">{item.reservation_time.slice(0,5)} · {item.name}</span><span>{item.num_guests} pessoas · {item.status}</span></div><div className="mt-2 flex flex-wrap gap-2">{item.status==='pending'&&<button onClick={()=>void action(item.id,'confirm')}>Confirmar</button>}{!item.arrived_at&&['pending','confirmed'].includes(item.status)&&<button onClick={()=>void action(item.id,'arrive')}>Chegou</button>}{item.status==='confirmed'&&<button onClick={()=>void action(item.id,'seat')}>Sentar</button>}{item.status==='seated'&&<button onClick={()=>void action(item.id,'complete')}>Finalizar</button>}{item.status==='confirmed'&&<button onClick={()=>void action(item.id,'no_show')}>No-show</button>}</div></div>)}</section><section className="rounded-3xl border border-[#D9CFC1] bg-white"><header className="border-b border-[#D9CFC1] p-5 font-bold"><TableProperties className="mr-2 inline" size={17}/>Mesas</header>{(data.tables||[]).map((table:any)=><div key={table.id} className="flex justify-between border-b border-[#D9CFC1]/50 p-4 text-sm"><span>{table.restaurant_areas?.name} · {table.code}</span><span>{table.max_capacity} lugares</span></div>)}</section></div>;
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [busyKey, setBusyKey] = useState('');
+  const [expandedReservationId, setExpandedReservationId] = useState('');
+  const [showWaitlistForm, setShowWaitlistForm] = useState(false);
+  const [showWalkInForm, setShowWalkInForm] = useState(false);
+  const [walkInWaitlistId, setWalkInWaitlistId] = useState('');
+  const [waitlistForm, setWaitlistForm] = useState<WaitlistForm>({ name: '', phone: '', partySize: '2', preferredAreaId: '', notes: '' });
+  const [walkInForm, setWalkInForm] = useState<WalkInForm>({ name: '', phone: '', partySize: '2', time: '', notes: '' });
+  const [classifications, setClassifications] = useState<Record<string, { turn: string; reason: string }>>({});
+  const requestInFlight = useRef(false);
+  const refreshQueued = useRef(false);
+  const loadRef = useRef<(quiet?: boolean) => Promise<boolean>>(async () => false);
+  const operationInFlight = useRef(false);
+
+  const load = useCallback(async (quiet = false) => {
+    if (requestInFlight.current) {
+      if (quiet) refreshQueued.current = true;
+      return false;
+    }
+    requestInFlight.current = true;
+    if (quiet) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const response = await fetch('/api/admin/operations', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível carregar a operação.');
+      setData(result as OperationsData);
+      setLoadError('');
+      return true;
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar a operação.');
+      return false;
+    } finally {
+      requestInFlight.current = false;
+      setLoading(false);
+      setRefreshing(false);
+      if (refreshQueued.current) {
+        refreshQueued.current = false;
+        window.setTimeout(() => void loadRef.current(true), 0);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase.channel('daily-operations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => void load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_table_assignments' }, () => void load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'waitlist_entries' }, () => void load(true))
+      .subscribe();
+
+    // Keep the board fresh even when the database has no Realtime publication.
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true);
+    }, 30_000);
+    return () => {
+      window.clearInterval(interval);
+      void supabase.removeChannel(channel);
+    };
+  }, [load]);
+
+  const reservations = data?.reservations || [];
+  const count = (statuses: string[]) => reservations.filter((item) => statuses.includes(item.status.toLowerCase())).length;
+  const people = reservations
+    .filter((item) => item.source !== 'walk_in' && !['cancelled', 'cancelado'].includes(item.status.toLowerCase()))
+    .reduce((sum, item) => sum + item.num_guests, 0);
+  const capacityByTurn = new Map<string, CapacitySlot>();
+  for (const slot of data?.capacity || []) {
+    if (!capacityByTurn.has(slot.commercial_turn)) capacityByTurn.set(slot.commercial_turn, slot);
+  }
+  const assignmentsByReservation = new Map<string, Assignment[]>();
+  for (const assignment of data?.assignments || []) {
+    const current = assignmentsByReservation.get(assignment.reservation_id) || [];
+    current.push(assignment);
+    assignmentsByReservation.set(assignment.reservation_id, current);
+  }
+
+  const runOperation = async (key: string, request: () => Promise<Response>, successMessage: string) => {
+    if (operationInFlight.current) return null;
+    operationInFlight.current = true;
+    setBusyKey(key);
+    setFeedback('');
+    try {
+      const response = await request();
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Não foi possível concluir a operação.');
+      setFeedback(response.status === 202 ? result.error || successMessage : successMessage);
+      await load(true);
+      return result;
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível concluir a operação.');
+      return null;
+    } finally {
+      operationInFlight.current = false;
+      setBusyKey('');
+    }
+  };
+
+  const action = async (reservation: Reservation, actionName: string) => {
+    if (actionName === 'cancel' && !window.confirm(`Cancelar a reserva de ${reservation.name}?`)) return;
+    await runOperation(`${reservation.id}:${actionName}`, () => fetch(`/api/reservations/${reservation.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: actionName }),
+    }), actionName === 'arrive' ? 'Chegada registrada.' : `Reserva atualizada: ${statusLabel(actionName === 'confirm' ? 'confirmed' : actionName === 'seat' ? 'seated' : actionName === 'complete' ? 'completed' : actionName === 'no_show' ? 'no_show' : 'cancelled')}.`);
+  };
+
+  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
+  const statusMatches: Record<string, string[]> = {
+    pending: ['pending', 'pendente'],
+    confirmed: ['confirmed', 'confirmado'],
+    completed: ['completed', 'concluido'],
+    cancelled: ['cancelled', 'cancelado'],
+  };
+  const visible = reservations.filter((item) => (
+    (statusFilter === 'all' || (statusMatches[statusFilter] || [statusFilter]).includes(item.status.toLowerCase()))
+    && `${item.name} ${item.whatsapp} ${item.reservation_time} ${item.status}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)
+  ));
+
+  const submitWaitlist = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = await runOperation('waitlist:create', () => fetch('/api/admin/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'waitlist', name: waitlistForm.name, phone: waitlistForm.phone, partySize: Number(waitlistForm.partySize), preferredAreaId: waitlistForm.preferredAreaId || null, notes: waitlistForm.notes }),
+    }), 'Entrada adicionada à fila.');
+    if (result) {
+      setWaitlistForm({ name: '', phone: '', partySize: '2', preferredAreaId: '', notes: '' });
+      setShowWaitlistForm(false);
+    }
+  };
+
+  const openWalkIn = (entry?: WaitlistEntry) => {
+    setWalkInWaitlistId(entry?.id || '');
+    setWalkInForm({ name: entry?.name || '', phone: entry?.phone || '', partySize: String(entry?.party_size || 2), time: currentLocalTime(), notes: entry?.notes || '' });
+    setShowWalkInForm(true);
+  };
+
+  const submitWalkIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data) return;
+    const result = await runOperation('walk-in:create', () => fetch('/api/admin/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'walk_in', name: walkInForm.name, phone: walkInForm.phone, partySize: Number(walkInForm.partySize), date: data.date, time: walkInForm.time, notes: walkInForm.notes, ...(walkInWaitlistId ? { waitlistId: walkInWaitlistId } : {}) }),
+    }), 'Walk-in registrado. Use “Mesas” na timeline para alocar uma mesa.');
+    if (result) {
+      setShowWalkInForm(false);
+      setWalkInWaitlistId('');
+    }
+  };
+
+  const updateWaitlist = async (entry: WaitlistEntry, actionName: string) => {
+    const labels: Record<string, string> = { call_waitlist: 'Cliente chamado.', return_waitlist: 'Cliente voltou para a fila.', leave_waitlist: 'Entrada marcada como saída.', cancel_waitlist: 'Entrada cancelada.' };
+    if (actionName === 'cancel_waitlist' && !window.confirm(`Cancelar a entrada de ${entry.name} na fila?`)) return;
+    await runOperation(`${entry.id}:${actionName}`, () => fetch('/api/admin/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: actionName, id: entry.id }),
+    }), labels[actionName]);
+  };
+
+  const classifyReservation = async (issue: ClassificationIssue) => {
+    const input = classifications[issue.id] || { turn: '', reason: '' };
+    const result = await runOperation(`${issue.id}:classify`, () => fetch('/api/admin/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'classify_reservation_turn', reservationId: issue.id, commercialTurn: input.turn, reason: input.reason }),
+    }), 'Turno histórico classificado.');
+    if (result) setClassifications((current) => { const next = { ...current }; delete next[issue.id]; return next; });
+  };
+
+  if (!data) return <div className="space-y-4 p-8 text-sm">
+    {loading ? <p>Carregando operação...</p> : <>
+      <p>{loadError || 'Não foi possível carregar a operação.'}</p>
+      <button type="button" onClick={() => void load()} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white">Tentar novamente</button>
+    </>}
+  </div>;
+
+  return <div className="space-y-6">
+    <div className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">Operação de hoje</h2>
+          <p className="text-sm text-[#4A3728]/60">{formatDate(data.date)} · Recepção, mesas e capacidade por turno comercial.</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={refreshing} className="rounded-xl border border-[#D9CFC1] px-3 py-2 text-xs font-bold text-[#4A3728] disabled:opacity-50" aria-label="Atualizar operação">
+          {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+        </button>
+      </div>
+      <div className="mt-4 flex items-center gap-2 rounded-xl bg-[#F5F2ED] px-4">
+        <Search size={16} className="shrink-0 text-[#4A3728]/50" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, telefone ou horário" className="w-full bg-transparent py-3 text-sm outline-none" />
+        <select aria-label="Filtrar reservas por status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="max-w-36 bg-transparent py-3 text-xs outline-none">
+          <option value="all">Todos</option>
+          <option value="pending">Pendentes</option>
+          <option value="confirmed">Confirmadas</option>
+          <option value="seated">Sentadas</option>
+          <option value="completed">Concluídas</option>
+          <option value="no_show">No-show</option>
+          <option value="cancelled">Canceladas</option>
+        </select>
+      </div>
+      {(loadError || feedback) && <p role="status" className="mt-3 rounded-xl bg-[#F5F2ED] px-4 py-3 text-xs text-[#4A3728]">{feedback || loadError}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => setShowWalkInForm((current) => !current)} className="rounded-xl bg-[#4A3728] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white">Registrar walk-in</button>
+        <button type="button" onClick={() => setShowWaitlistForm((current) => !current)} className="rounded-xl border border-[#4A3728]/20 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-[#4A3728]">Adicionar à fila</button>
+      </div>
+    </div>
+
+    {showWalkInForm && <form onSubmit={(event) => void submitWalkIn(event)} className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
+      <div className="mb-4 flex items-center justify-between"><h3 className="font-bold">{walkInWaitlistId ? 'Registrar cliente da fila como walk-in' : 'Novo walk-in'}</h3><button type="button" onClick={() => setShowWalkInForm(false)} aria-label="Fechar"><X size={18} /></button></div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <input required minLength={2} maxLength={120} value={walkInForm.name} onChange={(event) => setWalkInForm({ ...walkInForm, name: event.target.value })} placeholder="Nome" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="tel" value={walkInForm.phone} onChange={(event) => setWalkInForm({ ...walkInForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="number" min="1" max="30" value={walkInForm.partySize} onChange={(event) => setWalkInForm({ ...walkInForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="time" value={walkInForm.time} onChange={(event) => setWalkInForm({ ...walkInForm, time: event.target.value })} aria-label="Horário do walk-in" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input value={walkInForm.notes} onChange={(event) => setWalkInForm({ ...walkInForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm sm:col-span-2" />
+        <button type="submit" disabled={busyKey === 'walk-in:create'} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{busyKey === 'walk-in:create' ? 'Registrando...' : 'Confirmar walk-in'}</button>
+      </div>
+      <p className="mt-3 text-xs text-[#4A3728]/60">O walk-in será registrado para {formatDate(data.date)}. A alocação pode ser feita pela timeline.</p>
+    </form>}
+
+    {showWaitlistForm && <form onSubmit={(event) => void submitWaitlist(event)} className="rounded-3xl border border-[#D9CFC1] bg-white p-6">
+      <h3 className="mb-4 font-bold">Adicionar cliente à fila</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <input required minLength={2} maxLength={120} value={waitlistForm.name} onChange={(event) => setWaitlistForm({ ...waitlistForm, name: event.target.value })} placeholder="Nome" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="tel" value={waitlistForm.phone} onChange={(event) => setWaitlistForm({ ...waitlistForm, phone: event.target.value })} placeholder="Telefone / WhatsApp" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <input required type="number" min="1" max="30" value={waitlistForm.partySize} onChange={(event) => setWaitlistForm({ ...waitlistForm, partySize: event.target.value })} aria-label="Quantidade de pessoas" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <select value={waitlistForm.preferredAreaId} onChange={(event) => setWaitlistForm({ ...waitlistForm, preferredAreaId: event.target.value })} className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm"><option value="">Qualquer área</option>{data.areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select>
+        <input value={waitlistForm.notes} onChange={(event) => setWaitlistForm({ ...waitlistForm, notes: event.target.value })} maxLength={1000} placeholder="Observações (opcional)" className="rounded-xl bg-[#F5F2ED] px-4 py-3 text-sm" />
+        <button type="submit" disabled={busyKey === 'waitlist:create'} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{busyKey === 'waitlist:create' ? 'Adicionando...' : 'Adicionar à fila'}</button>
+      </div>
+    </form>}
+
+    <section className="grid gap-3 sm:grid-cols-2">
+      {(['lunch', 'dinner'] as const).map((turn) => {
+        const slot = capacityByTurn.get(turn);
+        const occupied = slot?.occupied_guests || 0;
+        const full = slot?.has_unclassified_reservation || occupied >= 80;
+        return <div key={turn} className="rounded-2xl border border-[#D9CFC1] bg-white p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">{turn === 'lunch' ? 'Almoço' : 'Jantar'}</p>
+            <span className={`text-xs font-bold ${full ? 'text-red-700' : 'text-[#4A3728]'}`}>{occupied} / 80</span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EBE3D5]">
+            <div className={`h-full ${full ? 'bg-red-600' : 'bg-[#4A3728]'}`} style={{ width: `${Math.min(100, occupied / 80 * 100)}%` }} />
+          </div>
+          {slot?.has_unclassified_reservation && <p className="mt-2 text-xs font-bold text-red-700">Há reserva histórica sem turno classificado.</p>}
+        </div>;
+      })}
+    </section>
+
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Metric label="Reservas" value={reservations.length} />
+      <Metric label="Pessoas em cota" value={people} />
+      <Metric label="Chegaram" value={reservations.filter((item) => item.arrived_at).length} />
+      <Metric label="Sentadas" value={count(['seated'])} />
+      <Metric label="Concluídas" value={count(['completed', 'concluido'])} />
+      <Metric label="No-show" value={count(['no_show'])} />
+      <Metric label="Canceladas" value={count(['cancelled', 'cancelado'])} />
+      <Metric label="Fila" value={data.waitlist.length} />
+    </div>
+
+    <section className="rounded-3xl border border-[#D9CFC1] bg-white">
+      <header className="flex items-center justify-between border-b border-[#D9CFC1] p-5 font-bold"><span><Clock className="mr-2 inline" size={17} />Timeline</span><span className="text-xs font-normal text-[#4A3728]/60">{visible.length} de {reservations.length}</span></header>
+      {visible.length === 0 ? <p className="p-6 text-sm text-[#4A3728]/60">{reservations.length ? 'Nenhuma reserva corresponde à busca ou ao filtro.' : 'Não há reservas para este dia.'}</p> : visible.map((item) => {
+        const status = item.status.toLowerCase();
+        const assignments = assignmentsByReservation.get(item.id) || [];
+        const busy = busyKey !== '';
+        return <article key={item.id} className="border-b border-[#D9CFC1]/50 p-4 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <span className="font-bold">{item.reservation_time.slice(0, 5)} · {item.name}</span>
+              <p className="mt-1 text-xs text-[#4A3728]/70">{item.num_guests} pessoas · {statusLabel(status)} · {item.source === 'walk_in' ? 'Walk-in' : 'Reserva'}</p>
+              <p className="mt-1 text-xs text-[#4A3728]/60">{item.whatsapp}{item.commercial_turn ? ` · ${item.commercial_turn === 'lunch' ? 'Almoço' : item.commercial_turn === 'dinner' ? 'Jantar' : item.commercial_turn}` : ''}</p>
+              {item.arrived_at && <p className="mt-1 text-xs text-[#4A3728]/60">Chegada registrada às {new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(item.arrived_at))}</p>}
+              {item.notes && <p className="mt-1 text-xs text-[#4A3728]/60">Obs.: {item.notes}</p>}
+              {assignments.length > 0 && <p className="mt-1 text-xs font-bold text-[#4A3728]">Mesas: {assignments.map((assignment) => `${assignment.restaurant_tables?.restaurant_areas?.name || 'Área'} · ${assignment.restaurant_tables?.code || assignment.table_id}`).join(', ')}</p>}
+            </div>
+            <span className="text-xs text-[#4A3728]/50">{item.payment_status === 'paid' ? 'Pago' : item.payment_status === 'pending' ? 'Pagamento pendente' : ''}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {status === 'pending' && <button disabled={busy} onClick={() => void action(item, 'confirm')}>Confirmar</button>}
+            {!item.arrived_at && ['pending', 'confirmed'].includes(status) && <button disabled={busy} onClick={() => void action(item, 'arrive')}>Chegou</button>}
+            {status === 'confirmed' && <button disabled={busy} onClick={() => void action(item, 'seat')}>Sentar</button>}
+            {status === 'seated' && <button disabled={busy} onClick={() => void action(item, 'complete')}>Finalizar</button>}
+            {status === 'confirmed' && <button disabled={busy} onClick={() => void action(item, 'no_show')}>No-show</button>}
+            {['pending', 'confirmed'].includes(status) && <button disabled={busy} onClick={() => void action(item, 'cancel')}>Cancelar</button>}
+            {['pending', 'confirmed', 'seated'].includes(status) && <button type="button" onClick={() => setExpandedReservationId((current) => current === item.id ? '' : item.id)} title="Ver e alocar mesas" aria-label={`Alocar mesas para ${item.name}`} className="ml-auto text-[#4A3728]/70"><TableProperties size={18} /></button>}
+          </div>
+          {expandedReservationId === item.id && <ReservationTableAllocator reservationId={item.id} onSaved={() => void load(true)} />}
+        </article>;
+      })}
+    </section>
+
+    <section className="rounded-3xl border border-[#D9CFC1] bg-white">
+      <header className="flex items-center justify-between border-b border-[#D9CFC1] p-5 font-bold"><span><Users className="mr-2 inline" size={17} />Fila de espera</span><span className="text-xs font-normal text-[#4A3728]/60">{data.waitlist.length}</span></header>
+      {data.waitlist.length === 0 ? <p className="p-6 text-sm text-[#4A3728]/60">A fila está vazia.</p> : data.waitlist.map((entry) => {
+        const busy = busyKey !== '';
+        const areaName = data.areas.find((area) => area.id === entry.preferred_area_id)?.name;
+        return <div key={entry.id} className="border-b border-[#D9CFC1]/50 p-4 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold">{entry.name} · {entry.party_size} pessoas</p><p className="mt-1 text-xs text-[#4A3728]/60">{entry.phone} · {entry.status === 'called' ? 'Chamado' : 'Aguardando'}{areaName ? ` · ${areaName}` : ''}</p>{entry.notes && <p className="mt-1 text-xs text-[#4A3728]/60">Obs.: {entry.notes}</p>}</div><span className="text-xs text-[#4A3728]/50">{new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit' }).format(new Date(entry.created_at))}</span></div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {entry.status === 'waiting' && <button disabled={busy} onClick={() => void updateWaitlist(entry, 'call_waitlist')}>Chamar</button>}
+            {entry.status === 'called' && <button disabled={busy} onClick={() => void updateWaitlist(entry, 'return_waitlist')}>Voltar para fila</button>}
+            <button disabled={busy} onClick={() => openWalkIn(entry)}>Registrar walk-in</button>
+            <button disabled={busy} onClick={() => void updateWaitlist(entry, 'leave_waitlist')}>Saiu</button>
+            <button disabled={busy} onClick={() => void updateWaitlist(entry, 'cancel_waitlist')}>Cancelar</button>
+          </div>
+        </div>;
+      })}
+    </section>
+
+    {data.classificationIssues.length > 0 && <section className="rounded-3xl border border-[#D9CFC1] bg-white">
+      <header className="border-b border-[#D9CFC1] p-5 font-bold">Reservas sem turno classificado ({data.classificationIssues.length})</header>
+      <p className="px-5 pt-4 text-xs text-[#4A3728]/60">A classificação exige revisão do dono. Escolha o turno confirmado pela equipe e registre o motivo.</p>
+      {data.classificationIssues.map((issue) => {
+        const value = classifications[issue.id] || { turn: '', reason: '' };
+        return <div key={issue.id} className="grid gap-3 border-b border-[#D9CFC1]/50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div><p className="font-bold">{formatDate(issue.reservation_date)}</p><p className="mt-1 text-xs text-[#4A3728]/60">{issue.reservation_time.slice(0, 5)} · {issue.num_guests} pessoas · {statusLabel(issue.status)}</p></div>
+          <select disabled={!data.canClassifyHistoricalReservations} value={value.turn} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, turn: event.target.value } }))} className="rounded-xl bg-[#F5F2ED] px-3 py-3 text-sm"><option value="">Selecione o turno</option><option value="lunch">Almoço</option><option value="dinner">Jantar</option></select>
+          <input disabled={!data.canClassifyHistoricalReservations} value={value.reason} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, reason: event.target.value } }))} maxLength={1000} placeholder="Motivo da revisão" className="rounded-xl bg-[#F5F2ED] px-3 py-3 text-sm" />
+          <button disabled={!data.canClassifyHistoricalReservations || !value.turn || value.reason.trim().length < 3 || busyKey !== ''} onClick={() => void classifyReservation(issue)} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">{data.canClassifyHistoricalReservations ? 'Classificar' : 'Somente o dono'}</button>
+        </div>;
+      })}
+    </section>}
+  </div>;
 }
-function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-2xl border border-[#D9CFC1] bg-white p-4"><p className="text-[10px] font-bold uppercase text-[#4A3728]/50">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>; }
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-2xl border border-[#D9CFC1] bg-white p-4"><p className="text-[10px] font-bold uppercase text-[#4A3728]/50">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>;
+}

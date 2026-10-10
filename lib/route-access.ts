@@ -1,4 +1,4 @@
-const PANEL_ROLES = new Set(['admin', 'receptionist']);
+const PANEL_ROLES = new Set(['admin', 'dono', 'gerente', 'receptionist', 'portaria']);
 
 export function getProtectedRouteRedirect(pathname: string, role: string | null) {
   if (pathname.startsWith('/admin')) {
