@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Loader2, CalendarOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FieldLabel, Input } from '@/components/ui/form-controls';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 type BlockedDate = {
   id: string;
@@ -87,7 +92,7 @@ export default function BlockedDatesManager() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-white rounded-[28px] p-5 md:p-7 border border-[#D9CFC1] flex items-start gap-4 shadow-sm">
+      <Card className="flex items-start gap-4 p-5 shadow-sm md:p-7">
         <div className="w-12 h-12 shrink-0 bg-red-50 rounded-2xl flex items-center justify-center text-red-600">
           <CalendarOff size={24} />
         </div>
@@ -95,64 +100,63 @@ export default function BlockedDatesManager() {
           <h3 className="text-lg md:text-xl font-bold text-[#4A3728]">Datas Bloqueadas</h3>
           <p className="mt-1 text-sm leading-relaxed text-[#4A3728]/60">Bloqueie somente os próximos dias em que não haverá reservas online.</p>
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-6 xl:gap-8">
-        <form onSubmit={handleAddDate} className="bg-white rounded-[28px] border border-[#D9CFC1] p-5 md:p-6 shadow-sm space-y-4 h-fit xl:sticky xl:top-6">
+        <form onSubmit={handleAddDate} className="ui-card h-fit space-y-4 p-5 shadow-sm md:p-6 xl:sticky xl:top-6">
           <div className="flex items-center justify-between gap-4 mb-2">
             <h4 className="text-sm font-bold uppercase tracking-widest text-[#4A3728]">Novo bloqueio</h4>
             <span className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/40">Futuro</span>
           </div>
             <div>
-              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Data</label>
-              <input 
+              <FieldLabel htmlFor="blocked-date">Data</FieldLabel>
+              <Input
+                id="blocked-date"
                 type="date" 
                 required
                 min={today}
                 value={newDate} 
                 onChange={e => setNewDate(e.target.value)}
-                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Motivo / Descrição</label>
-              <input 
+              <FieldLabel htmlFor="blocked-reason">Motivo / Descrição</FieldLabel>
+              <Input
+                id="blocked-reason"
                 type="text" 
                 value={reason} 
                 onChange={e => setReason(e.target.value)}
-                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                 placeholder="Ex: Evento Fechado (Opcional)"
               />
             </div>
 
-            <button 
+            <Button
               type="submit"
               disabled={isSubmitting || !newDate}
-              className="w-full mt-4 py-4 bg-red-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="danger"
+              size="lg"
+              className="mt-4 w-full uppercase tracking-widest"
             >
               {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> Bloquear Data</>}
-            </button>
+            </Button>
         </form>
 
-        <div className="bg-white rounded-[28px] border border-[#D9CFC1] shadow-sm overflow-hidden min-h-[300px]">
-          <div className="flex items-center justify-between gap-4 border-b border-[#D9CFC1]/60 px-5 py-4 md:px-6">
+        <Card className="min-h-[300px] overflow-hidden shadow-sm">
+          <CardHeader>
             <div>
-              <h4 className="font-bold text-[#4A3728]">Próximos bloqueios</h4>
+              <CardTitle>Próximos bloqueios</CardTitle>
               <p className="mt-0.5 text-xs text-[#4A3728]/55">Bloqueios vencidos permanecem no histórico, mas não afetam novas reservas.</p>
             </div>
-            <span className="shrink-0 rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700">{dates.length}</span>
-          </div>
+            <StatusBadge label={`${dates.length}`} tone="danger" />
+          </CardHeader>
             {loading ? (
               <div className="p-20 flex flex-col items-center justify-center">
                 <Loader2 className="w-10 h-10 text-[#4A3728]/20 animate-spin mb-4" />
                 <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/40">Carregando...</p>
               </div>
             ) : dates.length === 0 ? (
-              <div className="p-20 text-center">
-                <CalendarOff size={40} className="mx-auto text-[#4A3728]/10 mb-4" />
-                <p className="text-sm font-bold text-[#4A3728]/40">Nenhum próximo bloqueio.</p>
-              </div>
+              <EmptyState icon={<CalendarOff size={32} />} title="Nenhum próximo bloqueio" description="As datas bloqueadas aparecerão aqui." />
             ) : (
               <div className="divide-y divide-[#D9CFC1]/40">
                 {dates.map((d) => (
@@ -163,18 +167,20 @@ export default function BlockedDatesManager() {
                       </div>
                     </div>
                     <div className="min-w-0 text-[#4A3728]/80 text-sm font-medium break-words">{d.reason || 'Sem descrição'}</div>
-                    <button 
+                    <Button
                       onClick={() => handleDelete(d.id)}
-                      className="w-full sm:w-auto px-3 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors inline-flex items-center justify-center gap-2"
+                      variant="danger"
+                      size="sm"
+                      className="w-full sm:w-auto"
                       title="Remover Bloqueio"
                     >
                       <Trash2 size={16} /> <span className="text-xs font-bold sm:hidden">Liberar data</span>
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
-        </div>
+        </Card>
       </div>
     </div>
   );

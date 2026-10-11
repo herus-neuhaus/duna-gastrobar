@@ -4,6 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, Plus, Users, Shield, UserPlus, X, Pencil, Trash2, Save } from 'lucide-react';
 import { Database } from '@/lib/supabase/database.types';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input, Select } from '@/components/ui/form-controls';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Role = Database['public']['Tables']['employee_roles']['Row'];
@@ -197,10 +201,10 @@ export default function FuncionariosManager() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
+      <Card className="flex flex-col items-center justify-center py-20 shadow-sm">
         <Loader2 className="animate-spin text-[#4A3728]/20 mb-4" size={40} />
         <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/40">Carregando dados...</p>
-      </div>
+      </Card>
     );
   }
 
@@ -213,18 +217,18 @@ export default function FuncionariosManager() {
           <p className="mt-1 text-xs text-amber-900/75">Somente o dono concede ou revoga. Cada uso ainda exige ação explícita e motivo; isso não autoriza horário fora da agenda.</p>
         </div>
         <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_auto]">
-          <select value={capacityTarget} onChange={(event) => setCapacityTarget(event.target.value)} className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm">
+          <Select value={capacityTarget} onChange={(event) => setCapacityTarget(event.target.value)} className="border-amber-200">
             <option value="">Selecione uma pessoa da equipe</option>
             {capacityProfiles.filter((profile) => profile.id !== currentUserId).map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name || profile.email || profile.id} · {profile.role}</option>)}
-          </select>
-          <input value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} maxLength={1000} placeholder="Motivo obrigatório da alteração" className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm" />
-          <button type="button" disabled={!capacityTarget || !capacityReason.trim() || capacityBusy} onClick={() => void updateCapacityPermission(true, capacityTarget)} className="rounded-xl bg-[#4A3728] px-5 py-3 text-xs font-bold uppercase text-white disabled:opacity-50">Conceder</button>
+          </Select>
+          <Input value={capacityReason} onChange={(event) => setCapacityReason(event.target.value)} maxLength={1000} placeholder="Motivo obrigatório da alteração" className="border-amber-200" />
+          <Button type="button" disabled={!capacityTarget || !capacityReason.trim() || capacityBusy} onClick={() => void updateCapacityPermission(true, capacityTarget)} className="uppercase">Conceder</Button>
         </div>
         {capacityError && <p className="mt-3 text-sm text-red-700">{capacityError}</p>}
         <div className="mt-5 space-y-2">
           {capacityProfiles.filter((profile) => profile.id !== currentUserId && capacityPermissions.some((permission) => permission.profile_id === profile.id && !permission.revoked_at)).map((profile) => <div key={profile.id} className="flex items-center justify-between rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm">
             <span>{profile.full_name || profile.email || profile.id} · {profile.role}</span>
-            <button type="button" disabled={capacityBusy} onClick={() => { setCapacityTarget(profile.id); void updateCapacityPermission(false, profile.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50">Revogar</button>
+            <Button type="button" variant="danger" size="sm" disabled={capacityBusy} onClick={() => { setCapacityTarget(profile.id); void updateCapacityPermission(false, profile.id); }}>Revogar</Button>
           </div>)}
         </div>
         {capacityAudits.length > 0 && <details className="mt-4 text-xs text-amber-950">
@@ -234,7 +238,7 @@ export default function FuncionariosManager() {
       </section>}
       
       {/* Roles Section */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#D9CFC1]">
+      <Card className="p-5 shadow-sm sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><Shield size={20} /></div>
           <div>
@@ -244,20 +248,19 @@ export default function FuncionariosManager() {
         </div>
 
         <form onSubmit={handleCreateRole} className="flex gap-3 mb-6">
-          <input 
+          <Input
             type="text" 
             placeholder="Nome do novo cargo..." 
             value={newRoleName}
             onChange={e => setNewRoleName(e.target.value)}
-            className="flex-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#4A3728] outline-none"
           />
-          <button 
+          <Button
             type="submit"
             disabled={creatingRole || !newRoleName.trim()}
-            className="bg-[#4A3728] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#3d2d21] disabled:opacity-50 flex items-center gap-2"
+            className="uppercase tracking-widest"
           >
             {creatingRole ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Adicionar
-          </button>
+          </Button>
         </form>
 
         <div className="flex flex-wrap gap-2">
@@ -289,10 +292,10 @@ export default function FuncionariosManager() {
           })}
           {roles.length === 0 && <span className="text-sm text-[#4A3728]/50 italic">Nenhum cargo cadastrado.</span>}
         </div>
-      </div>
+      </Card>
 
       {/* Employees Section */}
-      <div className="bg-white rounded-3xl shadow-sm border border-[#D9CFC1] overflow-hidden">
+      <Card className="overflow-hidden shadow-sm">
         <div className="p-6 border-b border-[#D9CFC1]/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><Users size={20} /></div>
@@ -301,12 +304,13 @@ export default function FuncionariosManager() {
               <p className="text-xs text-[#4A3728]/60 mt-1">Defina o Nível de Acesso e o Cargo de cada membro.</p>
             </div>
           </div>
-          <button 
+          <Button
+            type="button"
             onClick={() => setShowEmployeeModal(true)}
-            className="bg-[#4A3728] text-white px-5 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-[#3d2d21] transition-colors flex items-center gap-2"
+            className="uppercase tracking-widest"
           >
             <UserPlus size={16} /> Adicionar Membro
-          </button>
+          </Button>
         </div>
 
         <div className="divide-y divide-[#D9CFC1]/40">
@@ -343,33 +347,33 @@ export default function FuncionariosManager() {
               <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
                 <div className="w-full md:w-auto">
                   <label className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60 md:hidden mb-1 block">Nível de Acesso</label>
-                  <select
+                  <Select
                     value={profile.role || ''}
                     onChange={(e) => handleUpdateProfile(profile.id, { role: e.target.value || null })}
                     disabled={updating === profile.id}
-                    className="w-full md:w-40 bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
+                    className="md:w-40"
                   >
                     <option value="">(Sem acesso)</option>
                     <option value="admin">Administrador</option>
                     <option value="receptionist">Recepcionista</option>
                     <option value="employee">Funcionário</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div className="w-full md:w-auto flex items-center gap-2">
                   <div className="flex-1">
                     <label className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60 md:hidden mb-1 block">Cargo Operacional</label>
-                    <select
+                    <Select
                       value={profile.job_role_id || ''}
                       onChange={(e) => handleUpdateProfile(profile.id, { job_role_id: e.target.value || null })}
                       disabled={updating === profile.id || profile.role !== 'employee'}
-                      className="w-full md:w-40 bg-white border border-[#D9CFC1] rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-[#4A3728] outline-none disabled:opacity-50"
+                      className="md:w-40"
                     >
                       <option value="">(Nenhum cargo)</option>
                       {roles.map(r => (
                         <option key={r.id} value={r.id}>{r.name}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   {updating === profile.id && <Loader2 size={14} className="animate-spin text-[#4A3728]/50 mt-4 md:mt-0" />}
                 </div>
@@ -378,63 +382,63 @@ export default function FuncionariosManager() {
           ))}
         </div>
         {profiles.length === 0 && (
-          <div className="p-6 text-center text-[#4A3728]/50 text-sm">Nenhum perfil encontrado.</div>
+          <EmptyState title="Nenhum perfil encontrado" description="Os membros da equipe aparecerão aqui." />
         )}
-      </div>
+      </Card>
 
       {/* Modal Adicionar Funcionário */}
       {showEmployeeModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#FDFBF7] w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+          <Card className="w-full max-w-md animate-in zoom-in-95 p-5 shadow-2xl duration-200 sm:p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-serif font-bold uppercase tracking-widest text-[#4A3728]">Novo Membro</h3>
-              <button onClick={() => setShowEmployeeModal(false)} className="text-[#4A3728]/50 hover:text-[#4A3728]">
+              <Button type="button" onClick={() => setShowEmployeeModal(false)} variant="ghost" size="icon" aria-label="Fechar cadastro de membro">
                 <X size={24} />
-              </button>
+              </Button>
             </div>
 
             <form onSubmit={handleCreateEmployee} className="space-y-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Nome Completo</label>
-                <input required type="text" value={employeeForm.name} onChange={e => setEmployeeForm({...employeeForm, name: e.target.value})} className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 focus:ring-[#4A3728] outline-none" />
+                <Input required type="text" value={employeeForm.name} onChange={e => setEmployeeForm({...employeeForm, name: e.target.value})} />
               </div>
               
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">E-mail</label>
-                <input required type="email" value={employeeForm.email} onChange={e => setEmployeeForm({...employeeForm, email: e.target.value})} className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 focus:ring-[#4A3728] outline-none" />
+                <Input required type="email" value={employeeForm.email} onChange={e => setEmployeeForm({...employeeForm, email: e.target.value})} />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Senha (mínimo 6 caracteres)</label>
-                <input required minLength={6} type="password" value={employeeForm.password} onChange={e => setEmployeeForm({...employeeForm, password: e.target.value})} className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 focus:ring-[#4A3728] outline-none" />
+                <Input required minLength={6} type="password" value={employeeForm.password} onChange={e => setEmployeeForm({...employeeForm, password: e.target.value})} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Nível de Acesso</label>
-                  <select value={employeeForm.role} onChange={e => setEmployeeForm({...employeeForm, role: e.target.value})} className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 outline-none">
+                  <Select value={employeeForm.role} onChange={e => setEmployeeForm({...employeeForm, role: e.target.value})}>
                     <option value="employee">Funcionário (Checklist)</option>
                     <option value="admin">Administrador (Painel)</option>
                     <option value="receptionist">Recepcionista</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Cargo Operacional</label>
-                  <select disabled={employeeForm.role !== 'employee'} value={employeeForm.job_role_id} onChange={e => setEmployeeForm({...employeeForm, job_role_id: e.target.value})} className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 outline-none disabled:opacity-50">
+                  <Select disabled={employeeForm.role !== 'employee'} value={employeeForm.job_role_id} onChange={e => setEmployeeForm({...employeeForm, job_role_id: e.target.value})}>
                     <option value="">Nenhum cargo</option>
                     {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               {employeeError && <p className="text-red-500 text-xs font-bold mt-2">{employeeError}</p>}
 
-              <button disabled={creatingEmployee} type="submit" className="w-full mt-6 bg-[#4A3728] text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#3d2d21] disabled:opacity-50 flex justify-center items-center gap-2">
+              <Button disabled={creatingEmployee} type="submit" size="lg" className="mt-6 w-full uppercase tracking-widest">
                 {creatingEmployee ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
                 Cadastrar Membro
-              </button>
+              </Button>
             </form>
-          </div>
+          </Card>
         </div>
       )}
 

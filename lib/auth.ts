@@ -17,6 +17,10 @@ export async function isReservationOwner() {
   return hasRole([OWNER_ROLE]);
 }
 
+export async function isFinanceStaff() {
+  return hasRole([OWNER_ROLE, 'gerente']);
+}
+
 export async function canOverrideReservationCapacity() {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc('can_override_reservation_capacity');

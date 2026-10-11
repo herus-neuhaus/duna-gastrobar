@@ -20,6 +20,10 @@ import {
 import { format } from 'date-fns';
 import { Database } from '@/lib/supabase/database.types';
 import ForcePasswordChangeModal from '@/app/components/ForcePasswordChangeModal';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FieldLabel, Input } from '@/components/ui/form-controls';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type TaskCompletion = Database['public']['Tables']['task_completions']['Row'];
@@ -193,7 +197,7 @@ export default function ChecklistPage() {
           onSuccess={() => setForcePasswordChange(false)} 
         />
       )}
-      <header className="bg-[#4A3728] text-white p-6 shadow-md flex justify-between items-center sticky top-0 z-10">
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-[#4A3728] px-4 py-4 text-white shadow-md sm:px-6">
         <div>
           <h1 className="text-xl font-serif font-bold uppercase tracking-widest flex items-center gap-2">
             Duna Checklist
@@ -201,12 +205,12 @@ export default function ChecklistPage() {
           <p className="text-[10px] text-white/60 tracking-widest uppercase mt-1">{format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => { setEditName(userName || ''); setIsEditingProfile(true); }} className="flex items-center gap-2 text-xs font-bold bg-white/10 px-3 py-2 rounded-xl hover:bg-white/20 transition-colors">
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setEditName(userName || ''); setIsEditingProfile(true); }} className="bg-white/10 text-white hover:bg-white/20">
             <User size={14} /> <span className="hidden sm:inline">{userName || 'Perfil'}</span>
-          </button>
-          <button onClick={handleLogout} className="p-2 bg-white/10 rounded-xl hover:bg-white/20 transition-colors">
+          </Button>
+          <Button type="button" variant="ghost" size="icon" onClick={handleLogout} aria-label="Sair" className="bg-white/10 text-white hover:bg-white/20">
             <LogOut size={16} />
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -215,38 +219,36 @@ export default function ChecklistPage() {
           <div className="bg-[#FDFBF7] w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg text-[#4A3728]">Editar Perfil</h3>
-              <button onClick={() => setIsEditingProfile(false)} className="text-[#4A3728]/50 hover:text-[#4A3728]">
+              <Button type="button" onClick={() => setIsEditingProfile(false)} variant="ghost" size="icon" aria-label="Fechar edição de perfil">
                 <X size={20} />
-              </button>
+              </Button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Nome Completo</label>
-                <input 
+                <FieldLabel htmlFor="employee-full-name">Nome completo</FieldLabel>
+                <Input
+                  id="employee-full-name"
                   type="text" 
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
-                  className="w-full px-4 py-3 bg-white rounded-xl text-sm border border-[#D9CFC1] focus:ring-1 focus:ring-[#4A3728] outline-none"
                   autoFocus
                 />
               </div>
-              <button 
+              <Button
+                type="button"
                 onClick={handleSaveProfile}
-                className="w-full bg-[#4A3728] text-white py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#3d2d21] transition-colors"
+                className="w-full uppercase tracking-widest"
               >
                 Salvar Alterações
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      <main className="flex-1 p-6 space-y-4 max-w-md mx-auto w-full">
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4 sm:p-6">
         {tasks.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
-            <CheckCircle size={40} className="mx-auto text-green-500 mb-4" />
-            <p className="text-sm font-bold text-[#4A3728]/60">Nenhuma tarefa para hoje!</p>
-          </div>
+          <EmptyState icon={<CheckCircle size={32} />} title="Nenhuma tarefa para hoje" description="Quando houver tarefas atribuídas, elas aparecerão aqui." />
         ) : (
           tasks.map(({ task, completion }) => (
             <TaskCard 
@@ -292,12 +294,12 @@ function TaskCard({ task, completion, onStart, onComplete }: { task: Task, compl
 
   if (isCompleted) {
     return (
-      <div className="bg-green-50 rounded-3xl p-5 border border-green-200 opacity-70">
+      <div className="rounded-2xl border border-green-200 bg-green-50 p-5 opacity-80">
         <div className="flex items-center gap-3">
           <CheckCircle className="text-green-500" size={24} />
           <div>
             <h3 className="font-bold text-green-900 strike-through line-through">{task.title}</h3>
-            <p className="text-[10px] uppercase font-bold text-green-700 mt-1">Aguardando Revisão</p>
+            <StatusBadge label="Aguardando revisão" tone="success" className="mt-1" />
           </div>
         </div>
       </div>
@@ -305,7 +307,7 @@ function TaskCard({ task, completion, onStart, onComplete }: { task: Task, compl
   }
 
   return (
-    <div className={`bg-white rounded-3xl p-5 shadow-sm border transition-all ${isInProgress ? (isOvertime ? 'border-red-400 shadow-red-100' : 'border-amber-400 shadow-amber-100') : 'border-[#D9CFC1]'}`}>
+    <div className={`ui-card flex flex-col p-5 transition-all ${isInProgress ? (isOvertime ? 'border-red-400 shadow-red-100' : 'border-amber-400 shadow-amber-100') : ''}`}>
       <div className="flex justify-between items-start mb-3">
         <h3 className="font-bold text-lg">{task.title}</h3>
         {task.scheduled_time && (
@@ -324,12 +326,13 @@ function TaskCard({ task, completion, onStart, onComplete }: { task: Task, compl
               <span className="text-[9px] font-bold uppercase text-[#4A3728]/40 mb-0.5">Tempo Estimado</span>
               <span className="text-xs font-bold">{task.time_estimate_minutes} minutos</span>
             </div>
-            <button 
+            <Button
+              type="button"
               onClick={onStart}
-              className="flex items-center gap-2 bg-[#4A3728] text-white px-5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-[#3d2d21] transition-colors"
+              className="uppercase tracking-widest"
             >
               <Play size={14} /> Iniciar
-            </button>
+            </Button>
           </>
         ) : (
           <>
@@ -337,12 +340,14 @@ function TaskCard({ task, completion, onStart, onComplete }: { task: Task, compl
               <span className="text-[9px] font-bold uppercase mb-0.5">{isOvertime ? 'Tempo Esgotado!' : 'Tempo Rolando'}</span>
               <span className="text-2xl font-bold font-mono tracking-tighter">{formatTime(elapsed)}</span>
             </div>
-            <button 
+            <Button
+              type="button"
+              variant="success"
               onClick={onComplete}
-              className="flex items-center gap-2 bg-green-500 text-white px-6 py-3 rounded-xl font-bold uppercase text-xs tracking-widest hover:bg-green-600 transition-colors shadow-lg shadow-green-500/30"
+              className="uppercase tracking-widest"
             >
               <CheckCircle size={16} /> Concluir
-            </button>
+            </Button>
           </>
         )}
       </div>

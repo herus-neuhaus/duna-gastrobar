@@ -50,8 +50,8 @@ async function reservation(d, guests, options = {}) {
   const id = randomUUID();
   reservationIds.push(id);
   await db.query(
-    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,decoration_id)
-     values ($1,'Capacity test','capacity@example.invalid',$2,$3,$4,$5,$6,'website',$7)`,
+    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,decoration_id,cpf)
+     values ($1,'Capacity test','capacity@example.invalid',$2,$3,$4,$5,$6,'website',$7,'52998224725')`,
     [id, options.phone || id, d, options.time || '12:00', guests, options.status || 'pending', options.decorationId || null],
   );
   return id;
@@ -134,10 +134,10 @@ test('capacity: completed and no_show count; only cancellation releases, and wal
   try {
     const walkIns = await actor(receptionist, async () => {
       const ids = [];
-      for (const [index, partySize] of [30, 30, 20].entries()) {
+      for (const [index, [partySize, cpf]] of [[30, '52998224725'], [30, null], [20, null]].entries()) {
         const result = await db.query(
-          "select * from create_walk_in_reservation('Walk in','walkin@example.invalid',$1,$2,'12:00',$3,null)",
-          [`6991234567${index}`, today, partySize],
+          "select * from create_walk_in_reservation('Walk in',null,$1,$2,'12:00',$3,null,$4)",
+          [`6991234567${index}`, today, partySize, cpf],
         );
         ids.push(result.rows[0].id);
       }

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
         }],
         customer: {
           name: reservation.name.slice(0, 64),
-          email: reservation.email.slice(0, 64),
+          ...(reservation.email ? { email: reservation.email.slice(0, 64) } : {}),
           type: 'individual',
           document: cpf,
           document_type: 'CPF',

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { isPanelStaff } from '@/lib/auth';
-import { isValidCpf } from '@/lib/pagarme';
+import { isValidCpf } from '@/lib/cpf';
 import { createReservationAccessToken, hashReservationAccessToken } from '@/lib/reservation-access';
 
 export const runtime = 'nodejs';
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     const whatsapp = typeof body.whatsapp === 'string' ? body.whatsapp.trim() : '';
+    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
     const date = typeof body.date === 'string' ? body.date : '';
     const time = typeof body.time === 'string' ? body.time : '';
     const notes = typeof body.notes === 'string' ? body.notes.trim().slice(0, 1000) : '';
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
     const supabase = createAdminClient();
     if (
       name.length < 2 || name.length > 120 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      (email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
+      !isValidCpf(cpf) ||
       !/^\d{10,11}$/.test(normalizePhone(whatsapp)) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       !/^\d{2}:\d{2}$/.test(time) ||
@@ -124,14 +126,48 @@ export async function POST(request: Request) {
 
     if (specialDate?.included_guests) guests = specialDate.included_guests;
 
+    // Compare only reservations with a classified commercial turn. Historical
+    // rows without a turn cannot safely be matched to lunch or dinner.
+    const { data: requestedTurn, error: requestedTurnError } = await supabase.rpc('get_reservation_commercial_turn', {
+      p_reservation_date: date,
+      p_reservation_time: time,
+    });
+    if (requestedTurnError) throw requestedTurnError;
+
+    if (requestedTurn === 'lunch' || requestedTurn === 'dinner') {
+      const { data: sameCpfReservations, error: sameCpfReservationsError } = await supabase
+        .from('reservations')
+        .select('commercial_turn,reservation_time,num_guests,status')
+        .eq('cpf', cpf)
+        .eq('reservation_date', date)
+        .eq('commercial_turn', requestedTurn)
+        .limit(50);
+
+      if (sameCpfReservationsError) throw sameCpfReservationsError;
+
+      const matchingReservation = (sameCpfReservations || []).find((item) => (
+        item.commercial_turn === requestedTurn &&
+        !['cancelled', 'cancelado'].includes(String(item.status || '').toLowerCase())
+      ));
+
+      if (matchingReservation) {
+        return NextResponse.json({
+          code: 'ACTIVE_CPF_RESERVATION_EXISTS',
+          existingReservation: {
+            time: matchingReservation.reservation_time,
+            guests: matchingReservation.num_guests,
+            turn: requestedTurn,
+          },
+        }, { status: 409 });
+      }
+    }
+
     const requiresGroupPayment = guests >= 15;
     const requiresSpecialPayment = Boolean(specialDate?.requires_fee);
     const requiresPayment = requiresGroupPayment || requiresSpecialPayment;
     const paymentAmount = requiresSpecialPayment ? Number(specialDate?.fee_amount || 0) : requiresGroupPayment ? 100 : 0;
-    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
-
-    if (requiresPayment && (!isValidCpf(cpf) || paymentAmount <= 0)) {
-      return NextResponse.json({ error: 'CPF inválido para o pagamento PIX.' }, { status: 400 });
+    if (requiresPayment && paymentAmount <= 0) {
+      return NextResponse.json({ error: 'Valor de pagamento inválido.' }, { status: 400 });
     }
 
     const accessToken = createReservationAccessToken();
@@ -147,7 +183,7 @@ export async function POST(request: Request) {
       const ownerClient = await createClient();
       const result = await ownerClient.rpc('create_reservation_with_authorized_overrides', {
         p_name: name,
-        p_email: email,
+        p_email: email || null,
         p_whatsapp: whatsapp,
         p_reservation_date: date,
         p_reservation_time: time,
@@ -155,7 +191,7 @@ export async function POST(request: Request) {
         p_notes: notes || null as never,
         p_special_date_id: specialDate?.id || null as never,
         p_decoration_id: decorationId || null as never,
-        p_cpf: requiresPayment ? cpf : null as never,
+        p_cpf: cpf,
         p_payment_status: requiresPayment ? 'pending' : 'not_required',
         p_payment_amount: paymentAmount,
         p_reservation_access_token_hash: hashReservationAccessToken(accessToken),
@@ -170,7 +206,7 @@ export async function POST(request: Request) {
         .from('reservations')
         .insert({
           name,
-          email,
+          email: email || null,
           whatsapp,
           reservation_date: date,
           reservation_time: time,
@@ -178,7 +214,7 @@ export async function POST(request: Request) {
           notes: notes || null,
           decoration_id: decorationId,
           special_date_id: specialDate?.id || null,
-          cpf: requiresPayment ? cpf : null,
+          cpf,
           status: 'pending',
           payment_status: requiresPayment ? 'pending' : 'not_required',
           payment_amount: paymentAmount,

@@ -1,10 +1,52 @@
 @import "tailwindcss";
+@import "tucano/css";
 
 :root {
   --duna-gold: #e6a72d;
   --duna-gold-light: #ffd46b;
   --duna-cream: #f3e5cd;
   --duna-wood: #160c07;
+  --color-brand: #4a3728;
+  --color-brand-hover: #3d2d21;
+  --color-canvas: #fdfbf7;
+  --color-surface-muted: #f5f2ed;
+  --color-border: #d9cfc1;
+  --color-text: #2f241c;
+  --color-text-muted: #76695e;
+  --color-cream: #f3e5cd;
+  --color-success: #166534;
+  --color-success-soft: #f0fdf4;
+  --color-success-button: #22c55e;
+  --color-success-button-hover: #16a34a;
+  --color-warning: #92400e;
+  --color-warning-soft: #fffbeb;
+  --color-danger: #991b1b;
+  --color-danger-soft: #fef2f2;
+  --color-info: #1e40af;
+  --color-info-soft: #eff6ff;
+  --tuc-accent: var(--color-brand);
+  --tuc-accent-hover: var(--color-brand-hover);
+  --tuc-accent-fg: #ffffff;
+  --tuc-accent-text: var(--color-brand);
+  --tuc-success: var(--color-success);
+  --tuc-warning: var(--color-warning);
+  --tuc-danger: var(--color-danger);
+  --tuc-info: var(--color-info);
+  --tuc-danger-fill: #dc2626;
+  --tuc-bg: #ffffff;
+  --tuc-fg: var(--color-text);
+  --tuc-muted: var(--color-text-muted);
+  --tuc-subtle: #93877d;
+  --tuc-border: var(--color-border);
+  --tuc-hover: var(--color-surface-muted);
+  --tuc-elevated: #faf8f4;
+  --tuc-radius: 1.5rem;
+  --tuc-radius-md: 0.75rem;
+  --tuc-control-height: 2.75rem;
+  --tuc-text: 0.875rem;
+  --tuc-ring: rgb(74 55 40 / 0.16);
+  --radius-card: 1.5rem;
+  --shadow-card: 0 1px 3px rgb(74 55 40 / 8%);
 }
 
 html {
@@ -14,7 +56,104 @@ html {
 body {
   margin: 0;
   font-family: var(--font-body), sans-serif;
+  color: var(--color-text);
+  background: var(--color-canvas);
 }
+
+@layer components {
+  .ui-page-header { @apply flex flex-col gap-2; }
+  .ui-page-eyebrow { @apply text-[10px] font-bold uppercase tracking-[0.18em] text-[#76695e]; }
+  .ui-page-title { @apply font-serif text-2xl font-bold tracking-tight sm:text-3xl; color: var(--color-brand); }
+  .ui-page-description { @apply max-w-3xl text-sm leading-6; color: var(--color-text-muted); }
+  .ui-page-actions { @apply flex flex-wrap items-center gap-2; }
+  .ui-card { @apply border bg-white shadow-sm; border-color: var(--color-border); border-radius: var(--tuc-radius); }
+  .ui-card-header { @apply flex flex-wrap items-center justify-between gap-3 border-b p-4 sm:p-5; border-color: color-mix(in srgb, var(--color-border) 70%, transparent); }
+  .ui-card-title { @apply text-base font-bold sm:text-lg; color: var(--color-brand); }
+  .ui-card-description { @apply mt-1 text-sm leading-6; color: var(--color-text-muted); }
+  .ui-card-content { @apply p-4 sm:p-5; }
+  .ui-card-footer { @apply flex flex-wrap items-center gap-2 border-t p-4 sm:p-5; border-color: color-mix(in srgb, var(--color-border) 70%, transparent); }
+  .ui-button { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a684d] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50; }
+  .ui-button-primary { background: var(--color-brand); color: white; }
+  .ui-button-primary:hover { background: var(--color-brand-hover); }
+  .ui-button-secondary { border: 1px solid var(--color-border); background: white; color: var(--color-brand); }
+  .ui-button-secondary:hover, .ui-button-ghost:hover { background: var(--color-surface-muted); }
+  .ui-button-danger { border: 1px solid color-mix(in srgb, var(--color-danger) 18%, white); background: var(--color-danger-soft); color: var(--color-danger); }
+  .ui-button-danger:hover { background: color-mix(in srgb, var(--color-danger-soft) 80%, var(--color-danger)); }
+  .ui-button-success { background: var(--color-success); color: white; }
+  .ui-button-success:hover { background: color-mix(in srgb, var(--color-success) 85%, black); }
+  .ui-button-ghost { background: transparent; color: var(--color-brand); }
+  .ui-button-sm { @apply px-3 text-xs; }
+  .ui-button-md { @apply px-4 text-sm; }
+  .ui-button-lg { @apply px-6 text-sm; }
+  .ui-button-icon { @apply w-11 p-0; }
+  .ui-field-label { @apply mb-1.5 block text-xs font-bold; color: var(--color-brand); }
+  .ui-input { @apply min-h-11 w-full rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-shadow placeholder:text-[#76695e]/60 focus:ring-2 disabled:cursor-not-allowed; border-color: var(--color-border); color: var(--color-text); }
+  .ui-input:focus { border-color: color-mix(in srgb, var(--color-brand) 65%, white); --tw-ring-color: color-mix(in srgb, var(--color-brand) 20%, transparent); }
+  .ui-input:disabled { background: var(--color-surface-muted); }
+  .ui-select { @apply cursor-pointer; }
+  .ui-textarea { @apply min-h-24 resize-y; }
+  .ui-status-badge { @apply inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold leading-4; }
+  .ui-status-success { border-color: color-mix(in srgb, var(--color-success) 20%, white); background: var(--color-success-soft); color: var(--color-success); }
+  .ui-status-warning { border-color: color-mix(in srgb, var(--color-warning) 20%, white); background: var(--color-warning-soft); color: var(--color-warning); }
+  .ui-status-danger { border-color: color-mix(in srgb, var(--color-danger) 20%, white); background: var(--color-danger-soft); color: var(--color-danger); }
+  .ui-status-info { border-color: color-mix(in srgb, var(--color-info) 20%, white); background: var(--color-info-soft); color: var(--color-info); }
+  .ui-status-neutral { border-color: var(--color-border); background: var(--color-surface-muted); color: var(--color-brand); }
+  .ui-metric-card { @apply relative flex min-w-0 items-center gap-3 rounded-2xl border border-[#d9cfc1] bg-white p-4 shadow-sm sm:gap-4 sm:p-5; }
+  .ui-metric-icon { @apply flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#f5f2ed] text-[#4a3728] sm:size-12; }
+  .ui-metric-label { @apply text-[10px] font-bold uppercase tracking-wide; color: var(--color-text-muted); }
+  .ui-metric-value { @apply mt-1 text-2xl font-bold leading-none; color: var(--color-text); }
+  .ui-metric-detail { @apply mt-1 text-xs; color: var(--color-text-muted); }
+  .ui-metric-warning .ui-metric-icon { background: var(--color-warning-soft); color: var(--color-warning); }
+  .ui-metric-danger .ui-metric-icon { background: var(--color-danger-soft); color: var(--color-danger); }
+  .ui-metric-success .ui-metric-icon { background: var(--color-success-soft); color: var(--color-success); }
+  .ui-empty-state { @apply flex flex-col items-center justify-center gap-2 px-5 py-10 text-center; }
+  .ui-empty-icon { @apply mb-1 text-[#76695e]/60; }
+  .ui-empty-title { @apply text-sm font-bold text-[#4a3728]; }
+  .ui-empty-description { @apply max-w-lg text-sm leading-6 text-[#76695e]; }
+  .ui-empty-action { @apply mt-2; }
+  .ui-feedback { @apply rounded-xl border px-4 py-3 text-sm leading-5; }
+  .ui-feedback-info { @apply border-blue-200 bg-blue-50 text-blue-900; }
+  .ui-feedback-success { @apply border-green-200 bg-green-50 text-green-900; }
+  .ui-feedback-warning { @apply border-amber-200 bg-amber-50 text-amber-950; }
+  .ui-feedback-error { @apply border-red-200 bg-red-50 text-red-900; }
+}
+
+/* Shared additions for the Tucano primitives used by the React components. */
+.ui-button { min-height: 2.75rem; }
+.ui-button-success { background: var(--color-success-button); color: white; }
+.ui-button-success:hover { background: var(--color-success-button-hover); }
+.tuc-btn.ui-button-danger { border-color: color-mix(in srgb, var(--color-danger) 20%, white); background: var(--color-danger-soft); color: var(--color-danger); }
+.tuc-btn.ui-button-danger:hover { background: color-mix(in srgb, var(--color-danger-soft) 78%, var(--color-danger)); }
+.admin-sidebar {
+  --tuc-accent: #fdfbf7;
+  --tuc-accent-text: #4a3728;
+  --tuc-fg: #ffffff;
+  --tuc-muted: rgb(255 255 255 / 70%);
+  --tuc-border: rgb(255 255 255 / 16%);
+  --tuc-hover: rgb(255 255 255 / 10%);
+  --tuc-bg: #4a3728;
+  --tuc-control-height: 2.75rem;
+}
+.admin-sidebar .tuc-menu__item { color: rgb(255 255 255 / 72%); }
+.admin-sidebar .tuc-menu__item:hover { color: #ffffff; }
+.admin-sidebar .tuc-menu__item.is-active { background: #fdfbf7; color: #4a3728; }
+.admin-sidebar .tuc-menu__item.is-active .tuc-menu__icon { color: #4a3728; }
+.tuc-btn.duna-gold-button {
+  border: 1px solid #ffe39a;
+  color: #1b1007;
+  background: linear-gradient(105deg, #d9890b, #ffd35f 48%, #e99a14);
+  box-shadow: 0 0 7px #fff0b5, 0 0 24px rgb(245 164 25 / 78%), inset 0 1px rgb(255 255 255 / 65%);
+}
+.tuc-btn.duna-gold-button:hover { filter: brightness(1.08); }
+.tuc-btn.duna-dark-link {
+  border: 1px solid rgb(163 84 35 / 78%);
+  color: #ffffff;
+  background: linear-gradient(120deg, rgb(38 28 22 / 92%), rgb(12 10 9 / 96%));
+  box-shadow: inset 0 1px rgb(255 255 255 / 4%), 0 8px 18px rgb(0 0 0 / 20%);
+}
+.tuc-btn.duna-dark-link:hover { border-color: #d9913e; background: #2a1b13; }
+.tuc-btn.duna-whatsapp-button { border-color: #25d366; background: #25d366; color: #ffffff; }
+.tuc-btn.duna-whatsapp-button:hover { background: #1ebe5d; }
 
 .font-serif {
   font-family: var(--font-display), Georgia, serif;

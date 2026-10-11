@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/client';
 import { Loader2, CheckCircle, Clock, AlertTriangle, UserCheck } from 'lucide-react';
 import { Database } from '@/lib/supabase/database.types';
 import { format, parseISO, isToday } from 'date-fns';
+import { MetricCard } from '@/components/ui/metric-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 
 type TaskCompletion = Database['public']['Tables']['task_completions']['Row'];
 type Task = Database['public']['Tables']['tasks']['Row'];
@@ -87,27 +90,9 @@ export default function ProdutividadeDashboard() {
       
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-3xl shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><AlertTriangle size={24} /></div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">Aguardando Revisão</p>
-            <p className="text-2xl font-bold">{awaitingReview.length}</p>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-3xl shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><CheckCircle size={24} /></div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">Aprovadas Hoje</p>
-            <p className="text-2xl font-bold">{approved.length}</p>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-3xl shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Clock size={24} /></div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">Em Andamento</p>
-            <p className="text-2xl font-bold">{inProgress.length}</p>
-          </div>
-        </div>
+        <MetricCard label="Aguardando revisão" value={awaitingReview.length} icon={<AlertTriangle size={22} />} tone="warning" />
+        <MetricCard label="Aprovadas hoje" value={approved.length} icon={<CheckCircle size={22} />} tone="success" />
+        <MetricCard label="Em andamento" value={inProgress.length} icon={<Clock size={22} />} />
       </div>
 
       {/* Review List */}
@@ -122,7 +107,7 @@ export default function ProdutividadeDashboard() {
 
         <div className="divide-y divide-[#D9CFC1]/40">
           {awaitingReview.length === 0 && (
-            <div className="p-10 text-center text-[#4A3728]/50 text-sm">Nenhuma tarefa pendente de revisão. Ótimo trabalho! 🎉</div>
+            <EmptyState title="Nenhuma tarefa pendente de revisão" description="Ótimo trabalho! Não há execuções aguardando aprovação." />
           )}
           {awaitingReview.map(comp => {
             const timeEstimate = comp.task.time_estimate_minutes * 60;
@@ -146,14 +131,15 @@ export default function ProdutividadeDashboard() {
                   </div>
                 </div>
                 
-                <button 
+                <Button
                   onClick={() => handleApprove(comp.id)}
                   disabled={updating === comp.id}
-                  className="bg-green-500 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-green-600 disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-green-500/20"
+                  variant="success"
+                  size="lg"
                 >
                   {updating === comp.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                   Aprovar Execução
-                </button>
+                </Button>
               </div>
             )
           })}

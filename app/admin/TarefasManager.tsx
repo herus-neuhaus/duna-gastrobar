@@ -5,6 +5,11 @@ import { createClient } from '@/lib/supabase/client';
 import { Loader2, Plus, ListChecks, Calendar, Clock, User, Trash2, Pencil, X, Save } from 'lucide-react';
 import { Database } from '@/lib/supabase/database.types';
 import { format, parseISO } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input, Select, Textarea } from '@/components/ui/form-controls';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 type Category = Database['public']['Tables']['task_categories']['Row'];
 type Task = Database['public']['Tables']['tasks']['Row'];
@@ -195,20 +200,20 @@ export default function TarefasManager() {
   const getAssigneeLabel = (task: Task) => {
     if (task.assigned_employee_id) {
       const emp = employees.find(e => e.id === task.assigned_employee_id);
-      return <span className="text-blue-700 bg-blue-50 px-2 py-1 rounded-md text-[10px] border border-blue-200">Func: {emp?.full_name || 'Desconhecido'}</span>;
+      return <StatusBadge label={`Func: ${emp?.full_name || 'Desconhecido'}`} tone="info" />;
     }
     if (task.assigned_role_id) {
       const role = roles.find(r => r.id === task.assigned_role_id);
-      return <span className="text-purple-700 bg-purple-50 px-2 py-1 rounded-md text-[10px] border border-purple-200">Setor: {role?.name || 'Desconhecido'}</span>;
+      return <StatusBadge label={`Setor: ${role?.name || 'Desconhecido'}`} tone="neutral" />;
     }
-    return <span className="text-gray-700 bg-gray-100 px-2 py-1 rounded-md text-[10px] border border-gray-200">Qualquer Funcionário</span>;
+    return <StatusBadge label="Qualquer funcionário" />;
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
+      <Card className="flex flex-col items-center justify-center py-20 shadow-sm">
         <Loader2 className="animate-spin text-[#4A3728]/20 mb-4" size={40} />
-      </div>
+      </Card>
     );
   }
 
@@ -216,23 +221,22 @@ export default function TarefasManager() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* Categories */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#D9CFC1]">
+      <Card className="p-5 shadow-sm sm:p-6">
         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ListChecks size={20} /> Categorias de Tarefas</h3>
         <form onSubmit={handleCreateCategory} className="flex gap-3 mb-6">
-          <input 
+          <Input
             type="text" 
             placeholder="Nova categoria (Ex: Turno do dia)..." 
             value={newCatName}
             onChange={e => setNewCatName(e.target.value)}
-            className="flex-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#4A3728] outline-none"
           />
-          <button 
+          <Button
             type="submit"
             disabled={creatingCat || !newCatName.trim()}
-            className="bg-[#4A3728] text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#3d2d21] disabled:opacity-50"
+            className="uppercase tracking-widest"
           >
             Adicionar
-          </button>
+          </Button>
         </form>
         <div className="flex flex-wrap gap-2">
           {categories.map(c => {
@@ -263,11 +267,11 @@ export default function TarefasManager() {
           })}
           {categories.length === 0 && <span className="text-sm text-[#4A3728]/50 italic">Nenhuma categoria cadastrada.</span>}
         </div>
-      </div>
+      </Card>
 
       {/* Task Creation Form */}
       {showTaskForm && (
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-[#4A3728]/20 animate-in fade-in zoom-in-95 duration-200">
+        <Card className="animate-in fade-in zoom-in-95 p-5 shadow-sm duration-200 sm:p-6">
           <div className="flex justify-between items-center mb-6 border-b border-[#D9CFC1]/50 pb-4">
             <h3 className="font-bold text-lg">{editingTaskId ? 'Editar Tarefa' : 'Criar Nova Tarefa'}</h3>
             <button onClick={() => { setShowTaskForm(false); setEditingTaskId(null); resetForm(); }} className="p-2 hover:bg-[#F5F2ED] rounded-lg text-[#4A3728]/60 hover:text-[#4A3728] transition-colors"><X size={20} /></button>
@@ -277,20 +281,20 @@ export default function TarefasManager() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Título da Tarefa *</label>
-                <input required type="text" value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} className="w-full px-4 py-3 bg-[#F5F2ED] rounded-xl text-sm outline-none focus:ring-1" placeholder="Ex: Arrumar Salão" />
+                <Input required type="text" value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} placeholder="Ex: Arrumar Salão" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Categoria *</label>
-                <select required value={taskForm.category_id} onChange={e => setTaskForm({...taskForm, category_id: e.target.value})} className="w-full px-4 py-3 bg-[#F5F2ED] rounded-xl text-sm outline-none focus:ring-1">
+                <Select required value={taskForm.category_id} onChange={e => setTaskForm({...taskForm, category_id: e.target.value})}>
                   <option value="">Selecione...</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                </Select>
               </div>
             </div>
 
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Padrão de Execução / Descrição *</label>
-              <textarea required value={taskForm.description} onChange={e => setTaskForm({...taskForm, description: e.target.value})} className="w-full px-4 py-3 bg-[#F5F2ED] rounded-xl text-sm outline-none focus:ring-1 h-24" placeholder="Descreva os passos que o funcionário deve seguir..."></textarea>
+              <Textarea required value={taskForm.description} onChange={e => setTaskForm({...taskForm, description: e.target.value})} className="h-24" placeholder="Descreva os passos que o funcionário deve seguir..." />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -350,31 +354,32 @@ export default function TarefasManager() {
             </div>
 
             <div className="pt-4 flex gap-3 justify-end">
-              <button type="button" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); resetForm(); }} className="bg-[#F5F2ED] text-[#4A3728] px-6 py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#EBE6DD] transition-colors">
+              <Button type="button" variant="secondary" size="lg" className="uppercase tracking-widest" onClick={() => { setShowTaskForm(false); setEditingTaskId(null); resetForm(); }}>
                 Cancelar
-              </button>
-              <button disabled={savingTask} type="submit" className="bg-[#4A3728] text-white px-8 py-4 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#3d2d21] disabled:opacity-50 flex items-center justify-center gap-2">
+              </Button>
+              <Button disabled={savingTask} type="submit" size="lg" className="uppercase tracking-widest">
                 {savingTask ? <Loader2 size={16} className="animate-spin" /> : (editingTaskId ? <><Save size={16}/> Salvar</> : <><Plus size={16}/> Criar Tarefa</>)}
-              </button>
+              </Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Task List */}
       {!showTaskForm && (
-        <div className="bg-white rounded-3xl shadow-sm border border-[#D9CFC1] overflow-hidden">
+        <Card className="overflow-hidden shadow-sm">
           <div className="p-6 border-b border-[#D9CFC1]/50 flex justify-between items-center">
             <h3 className="font-bold text-lg">Banco de Tarefas</h3>
-            <button 
+            <Button
+              type="button"
               onClick={() => {
                 if (categories.length === 0) alert('Crie uma categoria primeiro!');
                 else setShowTaskForm(true);
               }}
-              className="bg-[#4A3728] text-white px-5 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-[#3d2d21] flex items-center gap-2"
+              className="uppercase tracking-widest"
             >
               <Plus size={14} /> Nova Tarefa
-            </button>
+            </Button>
           </div>
 
           <div className="divide-y divide-[#D9CFC1]/40">
@@ -385,10 +390,9 @@ export default function TarefasManager() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">{cat?.name}</span>
-                      {task.is_daily ? 
-                        <span className="text-green-700 bg-green-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-widest border border-green-200">Diária</span> : 
-                        <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-widest border border-amber-200">Única: {format(parseISO(task.target_date!), 'dd/MM')}</span>
-                      }
+                      {task.is_daily
+                        ? <StatusBadge label="Diária" tone="success" />
+                        : <StatusBadge label={`Única: ${format(parseISO(task.target_date!), 'dd/MM')}`} tone="warning" />}
                     </div>
                     <h4 className="font-bold text-base">{task.title}</h4>
                     <p className="text-xs text-[#4A3728]/60 mt-1 line-clamp-1">{task.description}</p>
@@ -398,29 +402,31 @@ export default function TarefasManager() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-4 md:mt-0">
-                    <button 
+                    <Button
                       onClick={() => startEditTask(task)} 
-                      className="px-3 py-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE6DD] rounded-xl transition-colors inline-flex items-center gap-2 text-xs font-bold"
+                      variant="secondary"
+                      size="sm"
                       title="Editar"
                     >
                       <Pencil size={14} /> Editar
-                    </button>
-                    <button 
+                    </Button>
+                    <Button
                       onClick={() => handleDeleteTask(task.id)} 
-                      className="px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors inline-flex items-center gap-2 text-xs font-bold"
+                      variant="danger"
+                      size="sm"
                       title="Apagar"
                     >
                       <Trash2 size={14} /> Apagar
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )
             })}
             {tasks.length === 0 && (
-              <div className="p-10 text-center text-[#4A3728]/50 text-sm">Nenhuma tarefa cadastrada.</div>
+              <EmptyState title="Nenhuma tarefa cadastrada" description="Crie uma tarefa para começar a organizar o trabalho da equipe." />
             )}
           </div>
-        </div>
+        </Card>
       )}
 
     </div>

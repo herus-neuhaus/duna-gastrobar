@@ -2,6 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { ImagePlus, Loader2, Power, Plus, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/form-controls';
+import { Feedback } from '@/components/ui/feedback';
 
 type Decoration = {
   id: string;
@@ -105,7 +111,7 @@ export default function DecorationsManager() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-[#D9CFC1] bg-white p-6 shadow-sm lg:p-8">
+      <Card className="p-5 shadow-sm sm:p-6 lg:p-8">
         <div className="mb-6 flex items-start gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#F5F2ED] text-[#4A3728]"><ImagePlus size={22} /></div>
           <div>
@@ -114,39 +120,39 @@ export default function DecorationsManager() {
           </div>
         </div>
         <form onSubmit={createDecoration} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]">
-          <input required value={name} onChange={(event) => setName(event.target.value)} maxLength={100} className="rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Ex.: Mesa varanda, Espaço aniversário" />
+          <Input required value={name} onChange={(event) => setName(event.target.value)} maxLength={100} placeholder="Ex.: Mesa varanda, Espaço aniversário" />
           <input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setImage(event.target.files?.[0] || null)} className="rounded-xl border border-[#D9CFC1] bg-white px-4 py-3 text-sm text-[#4A3728] file:mr-3 file:border-0 file:bg-[#F5F2ED] file:px-3 file:py-1 file:text-xs file:font-bold file:text-[#4A3728]" />
-          <button disabled={isSaving} className="flex items-center justify-center gap-2 rounded-xl bg-[#4A3728] px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50">
+          <Button type="submit" disabled={isSaving} size="md" className="uppercase tracking-widest">
             {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Adicionar
-          </button>
+          </Button>
         </form>
-        {message && <p className="mt-4 rounded-xl bg-[#F5F2ED] px-4 py-3 text-xs text-[#4A3728]">{message}</p>}
-      </section>
+        {message && <Feedback className="mt-4" tone={message.startsWith('Espaço') ? 'success' : 'error'} role={message.startsWith('Espaço') ? 'status' : 'alert'}>{message}</Feedback>}
+      </Card>
 
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-[#4A3728]/40" /></div>
       ) : decorations.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-[#D9CFC1] bg-white px-6 py-14 text-center text-sm text-[#4A3728]/50">Nenhuma decoração cadastrada.</div>
+        <Card><EmptyState title="Nenhuma decoração cadastrada" description="Cadastre o primeiro espaço ou decoração no formulário acima." /></Card>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {decorations.map((decoration) => (
-            <article key={decoration.id} className={`overflow-hidden rounded-3xl border bg-white shadow-sm ${decoration.active ? 'border-[#D9CFC1]' : 'border-[#D9CFC1]/60 opacity-60'}`}>
-              <img src={decoration.image_url} alt={decoration.name} className="h-44 w-full object-cover" />
+            <Card key={decoration.id} className={`overflow-hidden shadow-sm ${decoration.active ? '' : 'opacity-60'}`}>
+              <Image src={decoration.image_url} alt={decoration.name} width={900} height={352} unoptimized className="h-44 w-full object-cover" />
               <div className="flex items-center justify-between gap-3 p-5">
                 <div>
                   <h3 className="font-bold text-[#4A3728]">{decoration.name}</h3>
                   <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">{decoration.active ? 'Disponível' : 'Indisponível'}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setActive(decoration)} className="rounded-xl border border-[#D9CFC1] bg-[#F5F2ED] p-3 text-[#4A3728]" title={decoration.active ? 'Desativar' : 'Ativar'}>
+                  <Button onClick={() => setActive(decoration)} variant="secondary" size="icon" title={decoration.active ? 'Desativar' : 'Ativar'}>
                     <Power size={17} />
-                  </button>
-                  <button onClick={() => deleteDecoration(decoration)} className="rounded-xl border border-red-100 bg-red-50 p-3 text-red-600" title="Excluir espaço e imagem">
+                  </Button>
+                  <Button onClick={() => deleteDecoration(decoration)} variant="danger" size="icon" title="Excluir espaço e imagem">
                     <Trash2 size={17} />
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </article>
+            </Card>
           ))}
         </div>
       )}

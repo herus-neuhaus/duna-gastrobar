@@ -22,8 +22,8 @@ before(async () => {
   await db.query('insert into restaurant_areas(id,name) values ($1,$2)', [areaId, `Incremental capacity ${areaId}`]);
   await db.query('insert into restaurant_tables(id,area_id,code,min_capacity,max_capacity) values ($1,$2,$3,1,8)', [tableId, areaId, `HC-${tableId.slice(0, 8)}`]);
   await db.query(
-    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,payment_status,payment_amount,reservation_access_token_hash)
-     values ($1,'Preserved booking','preserve@example.invalid','69933334444',$2,'12:00',4,'confirmed','website','pending',100,$3)`,
+    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,payment_status,payment_amount,reservation_access_token_hash,cpf)
+     values ($1,'Preserved booking','preserve@example.invalid','69933334444',$2,'12:00',4,'confirmed','website','pending',100,$3,'52998224725')`,
     [reservationId, date, tokenHash],
   );
   await db.query("insert into reservation_payments(reservation_id,provider,provider_order_id,status,amount) values ($1,'synthetic','capacity-complement-order','pending',100)", [reservationId]);

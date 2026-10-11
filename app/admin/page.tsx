@@ -3,10 +3,10 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
+import Image from 'next/image';
 import { 
   Calendar as CalendarIcon, 
   Users, 
-  DollarSign, 
   Search, 
   MessageCircle, 
   CheckCircle, 
@@ -19,7 +19,8 @@ import {
   Printer,
   CalendarPlus,
   CalendarOff,
-  TableProperties
+  TableProperties,
+  X,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useSearchParams } from 'next/navigation';
@@ -46,6 +47,16 @@ import DecorationsManager from './DecorationsManager';
 import RestaurantManager from './RestaurantManager';
 import ReservationTableAllocator from './ReservationTableAllocator';
 import OperationsDashboard from './OperationsDashboard';
+import FinanceDashboard from './FinanceDashboard';
+import { PageHeader } from '@/components/ui/page-header';
+import { ReservationStatusBadge } from '@/components/ui/status-badge';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/form-controls';
+import { Select, Textarea } from '@/components/ui/form-controls';
+import { Card } from '@/components/ui/card';
+import { Feedback } from '@/components/ui/feedback';
+import { MetricCard } from '@/components/ui/metric-card';
 
 type Reservation = Database['public']['Tables']['reservations']['Row'];
 type ReservationStatus = 'confirmed' | 'cancelled' | 'seated' | 'completed' | 'no_show';
@@ -67,6 +78,7 @@ function ReservationsView() {
   const [startDate, setStartDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(startOfToday(), 'yyyy-MM-dd'));
   const [quickFilter, setQuickFilter] = useState('Hoje');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [showDatePicker, setShowDatePicker] = useState(false);
   
   const [supabase] = useState(createClient);
@@ -215,38 +227,35 @@ function ReservationsView() {
     (reservation.status || 'pending').toLowerCase() === 'pending'
   )).length;
 
-  const filteredReservations = reservations.filter(res => {
-    const matchesSearch = res.name.toLowerCase().includes(searchTerm.toLowerCase()) || res.whatsapp.includes(searchTerm);
-    return matchesSearch;
+  const reservationFilters = [
+    { key: 'all', label: 'Todas' },
+    { key: 'pending', label: 'Pendentes' },
+    { key: 'confirmed', label: 'Confirmadas' },
+    { key: 'seated', label: 'Em atendimento' },
+    { key: 'completed', label: 'Concluídas' },
+    { key: 'no_show', label: 'Não compareceram' },
+    { key: 'cancelled', label: 'Canceladas' },
+  ];
+  const matchesStatusFilter = (status: string | null, filter: string) => {
+    const normalizedStatus = (status || 'pending').toLowerCase();
+    if (filter === 'all') return true;
+    if (filter === 'cancelled') return ['cancelled', 'cancelado'].includes(normalizedStatus);
+    if (filter === 'completed') return ['completed', 'concluido'].includes(normalizedStatus);
+    return normalizedStatus === filter;
+  };
+  const filteredReservations = reservations.filter((reservation) => {
+    const matchesStatus = matchesStatusFilter(reservation.status, statusFilter);
+    const normalizedSearch = searchTerm.trim().toLocaleLowerCase('pt-BR');
+    const normalizedPhoneSearch = normalizedSearch.replace(/\D/g, '');
+    const matchesSearch = !normalizedSearch
+      || reservation.name.toLocaleLowerCase('pt-BR').includes(normalizedSearch)
+      || (normalizedPhoneSearch.length > 0 && reservation.whatsapp.replace(/\D/g, '').includes(normalizedPhoneSearch))
+      || (reservation.email || '').toLocaleLowerCase('pt-BR').includes(normalizedSearch);
+    return matchesStatus && matchesSearch;
   });
 
-  const getStatusBadge = (status: string | null) => {
-    switch ((status || 'pending').toLowerCase()) {
-      case 'confirmed':
-        return <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-green-200">Confirmado</span>;
-      case 'pending':
-        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">Pendente</span>;
-      case 'cancelled':
-      case 'cancelado':
-        return <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-red-200">Cancelado</span>;
-      case 'completed':
-        return <span className="px-2.5 py-1 bg-[#EBE3D5] text-[#4A3728] rounded-md text-[10px] font-bold uppercase tracking-wider border border-[#D9CFC1]">Concluído</span>;
-      case 'seated':
-        return <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-200">Em atendimento</span>;
-      case 'no_show':
-        return <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">Não compareceu</span>;
-      default:
-        return <span className="px-2.5 py-1 bg-gray-100 text-gray-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-gray-200">{status}</span>;
-    }
-  };
+  const getStatusBadge = (status: string | null) => <ReservationStatusBadge status={status} />;
 
-  const canConfirm = (status: string | null) => (status || 'pending').toLowerCase() === 'pending';
-  const canCancel = (status: string | null) => {
-    const normalizedStatus = (status || 'pending').toLowerCase();
-    return normalizedStatus === 'pending' || normalizedStatus === 'confirmed';
-  };
-  const canSeat = (status: string | null) => (status || 'pending').toLowerCase() === 'confirmed';
-  const canComplete = (status: string | null) => (status || 'pending').toLowerCase() === 'seated';
   const getDecoration = (decorationId: string | null) => decorations.find((decoration) => decoration.id === decorationId);
 
   return (
@@ -255,7 +264,11 @@ function ReservationsView() {
       <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
         <div className="relative" ref={datePickerRef}>
           <button 
+            type="button"
             onClick={() => setShowDatePicker(!showDatePicker)}
+            aria-expanded={showDatePicker}
+            aria-haspopup="dialog"
+            aria-label={`Selecionar período. Período atual: ${quickFilter === 'Personalizado' ? `${startDate} até ${endDate}` : quickFilter}`}
             className="flex items-center gap-3 bg-white px-5 py-3 rounded-2xl shadow-sm border border-[#D9CFC1] hover:border-[#4A3728] transition-all w-full lg:w-auto"
           >
             <CalendarDays size={20} className="text-[#4A3728]/60" />
@@ -272,16 +285,20 @@ function ReservationsView() {
           </button>
 
           {showDatePicker && (
-            <div className="absolute top-full left-0 mt-2 w-full lg:w-80 bg-white rounded-3xl shadow-2xl border border-[#D9CFC1] p-4 z-40 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div role="dialog" aria-label="Filtros de período" className="absolute left-0 top-full z-40 mt-2 w-full rounded-3xl border border-[#D9CFC1] bg-white p-4 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200 lg:w-80">
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {['Hoje', 'Amanhã', 'Semana', 'Mês', 'Geral'].map(f => (
-                  <button 
+                  <Button
+                    type="button"
                     key={f}
                     onClick={() => handleQuickFilter(f)}
-                    className={`py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors ${quickFilter === f ? 'bg-[#4A3728] text-white' : 'bg-[#F5F2ED] text-[#4A3728] hover:bg-[#EBE3D5]'}`}
+                    aria-pressed={quickFilter === f}
+                    variant={quickFilter === f ? 'primary' : 'secondary'}
+                    size="sm"
+                    className="py-2.5 uppercase tracking-widest"
                   >
                     {f}
-                  </button>
+                  </Button>
                 ))}
               </div>
               
@@ -289,27 +306,27 @@ function ReservationsView() {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/40 mb-3 px-1">Personalizado</p>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Início</label>
-                    <input 
+                    <label htmlFor="reservations-start-date" className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Início</label>
+                    <Input
+                      id="reservations-start-date"
                       type="date" 
                       value={startDate}
                       onChange={(e) => {
                         setStartDate(e.target.value);
                         setQuickFilter('Personalizado');
                       }}
-                      className="w-full bg-[#F5F2ED] border-none rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-1 focus:ring-[#4A3728]"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Fim</label>
-                    <input 
+                    <label htmlFor="reservations-end-date" className="text-[9px] font-bold uppercase text-[#4A3728]/60 ml-1">Fim</label>
+                    <Input
+                      id="reservations-end-date"
                       type="date" 
                       value={endDate}
                       onChange={(e) => {
                         setEndDate(e.target.value);
                         setQuickFilter('Personalizado');
                       }}
-                      className="w-full bg-[#F5F2ED] border-none rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-1 focus:ring-[#4A3728]"
                     />
                   </div>
                 </div>
@@ -318,35 +335,54 @@ function ReservationsView() {
           )}
         </div>
 
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#4A3728]/30" size={18} />
-          <input 
+        <div className="relative min-w-0 flex-1 lg:max-w-md">
+          <label className="sr-only" htmlFor="reservation-search">Buscar reservas por nome, telefone ou e-mail</label>
+          <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#4A3728]/40" size={18} />
+          <Input
+            id="reservation-search"
             type="text" 
-            placeholder="Buscar cliente ou telefone..." 
+            placeholder="Nome, telefone ou e-mail"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 bg-white border border-[#D9CFC1] rounded-2xl text-sm shadow-sm focus:outline-none focus:border-[#4A3728] focus:ring-1 focus:ring-[#4A3728] placeholder:text-[#4A3728]/30 transition-all"
+            className="min-h-12 rounded-2xl pl-12 pr-12 shadow-sm"
           />
+          {searchTerm && <button type="button" onClick={() => setSearchTerm('')} aria-label="Limpar busca" className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-[#76695e] hover:bg-[#F5F2ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a684d]"><X size={16} /></button>}
         </div>
-        <button
+        <Button
           type="button"
           onClick={() => window.print()}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-[#D9CFC1] bg-white px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-[#4A3728] shadow-sm transition-colors hover:bg-[#F5F2ED]"
+          variant="secondary"
+          size="lg"
+          className="rounded-2xl uppercase tracking-widest"
         >
           <Printer size={16} /> Exportar PDF
-        </button>
+        </Button>
       </div>
+
+      <section aria-label="Filtrar reservas por status" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+        {reservationFilters.map((filter) => {
+          const count = reservations.filter((reservation) => matchesStatusFilter(reservation.status, filter.key)).length;
+          return <Button
+            key={filter.key}
+            type="button"
+            variant={statusFilter === filter.key ? 'primary' : 'secondary'}
+            size="sm"
+            aria-pressed={statusFilter === filter.key}
+            onClick={() => setStatusFilter(filter.key)}
+            className="shrink-0 rounded-full"
+          >
+            {filter.label}<span aria-label={`${count} reservas`} className={statusFilter === filter.key ? 'text-white/70' : 'text-[#76695e]'}>{count}</span>
+          </Button>;
+        })}
+      </section>
+      <p className="-mt-4 text-xs text-[#76695e]" aria-live="polite">
+        Exibindo <strong className="text-[#4A3728]">{filteredReservations.length}</strong> de {reservations.length} reservas no período.
+      </p>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className="w-12 h-12 flex items-center justify-center bg-[#F5F2ED] text-[#4A3728] rounded-2xl"><CalendarIcon size={20} strokeWidth={2.5} /></div>
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Reservas Ativas</p>
-            <p className="text-2xl font-bold">{loading ? '...' : totalReservations}</p>
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1]">
+        <MetricCard label="Reservas no período" value={loading ? '…' : totalReservations} icon={<CalendarIcon size={20} />} />
+        <Card className="p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex items-center gap-3">
             <div className="p-2.5 bg-[#F5F2ED] rounded-xl text-[#4A3728]"><Users size={20} /></div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/50">Pessoas por turno {startDate !== endDate && '(período)'}</p>
@@ -365,19 +401,8 @@ function ReservationsView() {
               </div>;
             })}
           </div>
-        </div>
-        <div className="bg-white p-5 rounded-[24px] shadow-sm border border-[#D9CFC1] flex items-center gap-4">
-          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl ${pendingReservations > 0 ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-[#F5F2ED] text-[#4A3728]'}`}>
-            <DollarSign size={20} strokeWidth={2.5} />
-          </div>
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/50">Pendentes</p>
-            <div className="flex items-center gap-2">
-              <p className="text-2xl font-bold">{loading ? '...' : pendingReservations}</p>
-              {pendingReservations > 0 && <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>}
-            </div>
-          </div>
-        </div>
+        </Card>
+        <MetricCard label="Aguardando confirmação" value={loading ? '…' : pendingReservations} icon={<AlertCircle size={20} />} tone={pendingReservations ? 'warning' : 'default'} />
       </div>
 
       {/* Content Area */}
@@ -388,9 +413,13 @@ function ReservationsView() {
             <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/40">Carregando reservas...</p>
           </div>
         ) : filteredReservations.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-[#D9CFC1] shadow-sm">
-            <AlertCircle size={40} className="mx-auto text-[#4A3728]/10 mb-4" />
-            <p className="text-sm font-bold text-[#4A3728]/40">Nenhuma reserva encontrada para este período.</p>
+          <div className="ui-card shadow-sm">
+            <EmptyState
+              icon={<AlertCircle size={32} />}
+              title={reservations.length ? 'Nenhuma reserva corresponde aos filtros' : 'Nenhuma reserva neste período'}
+              description={reservations.length ? 'Tente mudar o status ou limpar a busca.' : 'Escolha outro período para consultar reservas.'}
+              action={(searchTerm || statusFilter !== 'all') ? <Button type="button" variant="secondary" size="sm" onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}>Limpar filtros</Button> : undefined}
+            />
           </div>
         ) : (
           <>
@@ -421,7 +450,7 @@ function ReservationsView() {
                           )}
                           {getDecoration(res.decoration_id) && (
                             <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-[#4A3728]">
-                              <img src={getDecoration(res.decoration_id)?.image_url} alt="" className="size-7 rounded-lg object-cover" />
+                              <Image src={getDecoration(res.decoration_id)!.image_url} alt="" width={28} height={28} unoptimized className="size-7 rounded-lg object-cover" />
                               {getDecoration(res.decoration_id)?.name}
                             </div>
                           )}
@@ -447,39 +476,13 @@ function ReservationsView() {
                         {getStatusBadge(res.status)}
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                          {canConfirm(res.status) && <button
-                            onClick={() => updateStatus(res.id, 'confirmed')}
-                            className="p-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-xl border border-green-200 transition-colors"
-                            title="Confirmar"
-                          >
-                            <CheckCircle size={18} />
-                          </button>}
-                          {canCancel(res.status) && <button
-                            onClick={() => updateStatus(res.id, 'cancelled')}
-                            className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-colors"
-                            title="Cancelar"
-                          >
-                            <XCircle size={18} />
-                          </button>}
-                          {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'seated')} className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors" title="Registrar chegada">
-                            <Users size={18} />
-                          </button>}
-                          {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'no_show')} className="p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 transition-colors" title="Não compareceu">
-                            <CalendarOff size={18} />
-                          </button>}
-                          {canComplete(res.status) && <button onClick={() => updateStatus(res.id, 'completed')} className="p-2 text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors" title="Finalizar">
-                            <CheckCircle size={18} />
-                          </button>}
-                          <button onClick={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)} className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors" title="Alocar mesas"><TableProperties size={18} /></button>
-                          <button 
-                            onClick={() => openWhatsAppModal(res)}
-                            className="p-2 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE3D5] rounded-xl border border-[#D9CFC1] transition-colors"
-                            title="WhatsApp"
-                          >
-                            <MessageCircle size={18} />
-                          </button>
-                        </div>
+                        <ReservationActions
+                          reservation={res}
+                          allocating={allocatingReservationId === res.id}
+                          onStatusChange={updateStatus}
+                          onAllocateTables={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)}
+                          onWhatsApp={() => openWhatsAppModal(res)}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -531,44 +534,19 @@ function ReservationsView() {
                   )}
                   {getDecoration(res.decoration_id) && (
                     <div className="mb-4 flex items-center gap-2 rounded-2xl bg-[#F5F2ED] p-3 text-[11px] font-bold text-[#4A3728]">
-                      <img src={getDecoration(res.decoration_id)?.image_url} alt="" className="size-9 rounded-xl object-cover" />
+                      <Image src={getDecoration(res.decoration_id)!.image_url} alt="" width={36} height={36} unoptimized className="size-9 rounded-xl object-cover" />
                       {getDecoration(res.decoration_id)?.name}
                     </div>
                   )}
 
-                  <div className="grid grid-cols-3 gap-2">
-                    {canConfirm(res.status) && <button
-                      onClick={() => updateStatus(res.id, 'confirmed')}
-                      className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-green-50 text-green-700 border border-green-100 active:scale-95 transition-all"
-                    >
-                      <CheckCircle size={18} />
-                      <span className="text-[9px] font-bold uppercase">Confirmar</span>
-                    </button>}
-                    {canCancel(res.status) && <button
-                      onClick={() => updateStatus(res.id, 'cancelled')}
-                      className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-red-50 text-red-700 border border-red-100 active:scale-95 transition-all"
-                    >
-                      <XCircle size={18} />
-                      <span className="text-[9px] font-bold uppercase">Cancelar</span>
-                    </button>}
-                    {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'seated')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 active:scale-95 transition-all">
-                      <Users size={18} /><span className="text-[9px] font-bold uppercase">Chegou</span>
-                    </button>}
-                    {canSeat(res.status) && <button onClick={() => updateStatus(res.id, 'no_show')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-amber-50 text-amber-700 border border-amber-100 active:scale-95 transition-all">
-                      <CalendarOff size={18} /><span className="text-[9px] font-bold uppercase">No-show</span>
-                    </button>}
-                    {canComplete(res.status) && <button onClick={() => updateStatus(res.id, 'completed')} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-blue-50 text-blue-700 border border-blue-100 active:scale-95 transition-all">
-                      <CheckCircle size={18} /><span className="text-[9px] font-bold uppercase">Finalizar</span>
-                    </button>}
-                    <button onClick={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)} className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"><TableProperties size={18} /><span className="text-[9px] font-bold uppercase">Mesas</span></button>
-                    <button 
-                      onClick={() => openWhatsAppModal(res)}
-                      className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-2xl bg-[#F5F2ED] text-[#4A3728] border border-[#D9CFC1] active:scale-95 transition-all"
-                    >
-                      <MessageCircle size={18} />
-                      <span className="text-[9px] font-bold uppercase">WhatsApp</span>
-                    </button>
-                  </div>
+                  <ReservationActions
+                    reservation={res}
+                    allocating={allocatingReservationId === res.id}
+                    compact
+                    onStatusChange={updateStatus}
+                    onAllocateTables={() => setAllocatingReservationId(allocatingReservationId === res.id ? null : res.id)}
+                    onWhatsApp={() => openWhatsAppModal(res)}
+                  />
                   {allocatingReservationId === res.id && <ReservationTableAllocator reservationId={res.id} onSaved={() => void fetchReservations(true)} />}
                 </div>
               ))}
@@ -585,6 +563,70 @@ function ReservationsView() {
       />
     </div>
   );
+}
+
+function ReservationActions({
+  reservation,
+  allocating = false,
+  compact = false,
+  onStatusChange,
+  onAllocateTables,
+  onWhatsApp,
+}: {
+  reservation: Reservation;
+  allocating?: boolean;
+  compact?: boolean;
+  onStatusChange: (id: string, status: ReservationStatus) => Promise<void>;
+  onAllocateTables: () => void;
+  onWhatsApp: () => void;
+}) {
+  const status = (reservation.status || 'pending').toLowerCase();
+  const actions: { label: string; icon: React.ReactNode; variant: 'primary' | 'secondary' | 'danger' | 'success'; onClick: () => void; show: boolean }[] = [
+    { label: 'Confirmar', icon: <CheckCircle size={18} />, variant: 'success', onClick: () => void onStatusChange(reservation.id, 'confirmed'), show: status === 'pending' },
+    { label: 'Cancelar', icon: <XCircle size={18} />, variant: 'danger', onClick: () => void onStatusChange(reservation.id, 'cancelled'), show: ['pending', 'confirmed'].includes(status) },
+    { label: 'Registrar chegada', icon: <Users size={18} />, variant: 'secondary', onClick: () => void onStatusChange(reservation.id, 'seated'), show: status === 'confirmed' },
+    { label: 'Não compareceu', icon: <CalendarOff size={18} />, variant: 'secondary', onClick: () => void onStatusChange(reservation.id, 'no_show'), show: status === 'confirmed' },
+    { label: 'Finalizar', icon: <CheckCircle size={18} />, variant: 'primary', onClick: () => void onStatusChange(reservation.id, 'completed'), show: status === 'seated' },
+  ];
+  const visibleActions = actions.filter((action) => action.show);
+
+  return <div className={compact ? 'grid grid-cols-2 gap-2 sm:grid-cols-3' : 'flex justify-end gap-2'}>
+    {visibleActions.map((action) => <Button
+      key={action.label}
+      type="button"
+      variant={action.variant}
+      size={compact ? 'md' : 'icon'}
+      onClick={action.onClick}
+      title={action.label}
+      aria-label={`${action.label}: ${reservation.name}`}
+      className={compact ? 'min-h-14 flex-col gap-1.5 rounded-2xl px-2 py-2 text-[9px] uppercase leading-tight' : ''}
+    >
+      {action.icon}{compact && <span>{action.label}</span>}
+    </Button>)}
+    <Button
+      type="button"
+      variant={allocating ? 'primary' : 'secondary'}
+      size={compact ? 'md' : 'icon'}
+      onClick={onAllocateTables}
+      aria-pressed={allocating}
+      aria-label={`${allocating ? 'Fechar alocação de mesas' : 'Alocar mesas'}: ${reservation.name}`}
+      title={allocating ? 'Fechar alocação de mesas' : 'Alocar mesas'}
+      className={compact ? 'min-h-14 flex-col gap-1.5 rounded-2xl px-2 py-2 text-[9px] uppercase leading-tight' : ''}
+    >
+      <TableProperties size={18} />{compact && <span>Mesas</span>}
+    </Button>
+    <Button
+      type="button"
+      variant="secondary"
+      size={compact ? 'md' : 'icon'}
+      onClick={onWhatsApp}
+      aria-label={`Enviar mensagem para ${reservation.name} pelo WhatsApp`}
+      title="WhatsApp"
+      className={compact ? 'min-h-14 flex-col gap-1.5 rounded-2xl px-2 py-2 text-[9px] uppercase leading-tight' : ''}
+    >
+      <MessageCircle size={18} />{compact && <span>WhatsApp</span>}
+    </Button>
+  </div>;
 }
 
 function NewReservationView() {
@@ -609,9 +651,6 @@ function NewReservationView() {
   const [message, setMessage] = useState('');
 
   const guests = Number(form.guests);
-  const selectedSpecialDate = specialDates.find((specialDate) => specialDate.id === form.specialDateId);
-  const requiresPayment = guests >= 15 || Boolean(selectedSpecialDate?.requires_fee);
-
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void fetch('/api/admin/decorations', { cache: 'no-store' })
@@ -695,7 +734,7 @@ function NewReservationView() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl rounded-3xl border border-[#D9CFC1] bg-white p-6 shadow-sm lg:p-8">
+    <Card className="mx-auto max-w-3xl p-5 shadow-sm sm:p-6 lg:p-8">
       <div className="mb-7 flex items-start gap-4">
         <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#F5F2ED] text-[#4A3728]"><CalendarPlus size={22} /></div>
         <div>
@@ -707,42 +746,42 @@ function NewReservationView() {
       <form onSubmit={createReservation} className="grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Cliente</span>
-          <input required value={form.name} onChange={(event) => updateField('name', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Nome completo" />
+          <Input required value={form.name} onChange={(event) => updateField('name', event.target.value)} placeholder="Nome completo" />
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">WhatsApp</span>
-          <input required type="tel" value={form.whatsapp} onChange={(event) => updateField('whatsapp', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="(69) 99999-9999" />
+          <Input required type="tel" value={form.whatsapp} onChange={(event) => updateField('whatsapp', event.target.value)} placeholder="(69) 99999-9999" />
         </label>
         {specialDates.length > 0 && <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Evento especial</span>
-          <select value={form.specialDateId} onChange={(event) => updateField('specialDateId', event.target.value)} required={specialDates.length > 1} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]">
+          <Select value={form.specialDateId} onChange={(event) => updateField('specialDateId', event.target.value)} required={specialDates.length > 1}>
             {specialDates.length > 1 && <option value="">Selecione o evento</option>}
             {specialDates.map((specialDate) => <option key={specialDate.id} value={specialDate.id}>{specialDate.description || 'Evento especial'}{specialDate.included_guests ? ` (${specialDate.included_guests} pessoas)` : ''}{specialDate.requires_fee ? ` - Taxa R$ ${Number(specialDate.fee_amount || 0).toFixed(2)}` : ''}</option>)}
-          </select>
+          </Select>
         </label>}
         <label>
-          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">E-mail</span>
-          <input required type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="cliente@email.com" />
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">E-mail (opcional)</span>
+          <Input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="cliente@email.com" />
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Data</span>
-          <input required type="date" value={form.date} onChange={(event) => updateField('date', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+          <Input required type="date" value={form.date} onChange={(event) => updateField('date', event.target.value)} />
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Horário</span>
-          <input required type="time" value={form.time} onChange={(event) => updateField('time', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+          <Input required type="time" value={form.time} onChange={(event) => updateField('time', event.target.value)} />
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Pessoas</span>
-          <input required type="number" min="1" max="30" value={form.guests} onChange={(event) => updateField('guests', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" />
+          <Input required type="number" min="1" max="30" value={form.guests} onChange={(event) => updateField('guests', event.target.value)} />
         </label>
-        {requiresPayment && <label>
-          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">CPF para PIX</span>
-          <input required value={form.cpf} onChange={(event) => updateField('cpf', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="000.000.000-00" />
-        </label>}
+        <label>
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">CPF do cliente</span>
+          <Input required inputMode="numeric" value={form.cpf} onChange={(event) => updateField('cpf', event.target.value)} placeholder="000.000.000-00" />
+        </label>
         <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Ocasião ou observação</span>
-          <textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} maxLength={1000} className="min-h-24 w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]" placeholder="Ex.: Aniversário" />
+          <Textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} maxLength={1000} placeholder="Ex.: Aniversário" />
         </label>
         <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-amber-800">Exceções autorizadas</p>
@@ -750,67 +789,60 @@ function NewReservationView() {
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label>
               <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Exceder capacidade</span>
-              <input value={form.capacityOverrideReason} onChange={(event) => updateField('capacityOverrideReason', event.target.value)} maxLength={1000} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700" placeholder="Motivo obrigatório" />
+              <Input value={form.capacityOverrideReason} onChange={(event) => updateField('capacityOverrideReason', event.target.value)} maxLength={1000} className="border-amber-200 focus:border-amber-700" placeholder="Motivo obrigatório" />
             </label>
             <label>
               <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Fora do horário</span>
-              <input value={form.scheduleOverrideReason} onChange={(event) => updateField('scheduleOverrideReason', event.target.value)} maxLength={1000} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700" placeholder="Motivo obrigatório" />
+              <Input value={form.scheduleOverrideReason} onChange={(event) => updateField('scheduleOverrideReason', event.target.value)} maxLength={1000} className="border-amber-200 focus:border-amber-700" placeholder="Motivo obrigatório" />
             </label>
             {form.scheduleOverrideReason && <label>
               <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Turno de referência</span>
-              <select value={form.commercialTurn} onChange={(event) => updateField('commercialTurn', event.target.value)} className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-700">
+              <Select value={form.commercialTurn} onChange={(event) => updateField('commercialTurn', event.target.value)} className="border-amber-200 focus:border-amber-700">
                 <option value="lunch">Almoço</option>
                 <option value="dinner">Jantar</option>
-              </select>
+              </Select>
             </label>}
           </div>
         </div>
         {decorations.length > 0 && <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Decoração</span>
-          <select value={form.decorationId} onChange={(event) => updateField('decorationId', event.target.value)} className="w-full rounded-xl border border-[#D9CFC1] px-4 py-3 text-sm outline-none focus:border-[#4A3728]">
+          <Select value={form.decorationId} onChange={(event) => updateField('decorationId', event.target.value)}>
             <option value="">Sem decoração</option>
             {decorations.map((decoration) => <option key={decoration.id} value={decoration.id}>{decoration.name}</option>)}
-          </select>
+          </Select>
         </label>}
-        {message && <p className={`sm:col-span-2 rounded-xl px-4 py-3 text-sm ${message.startsWith('Reserva criada') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{message}</p>}
-        <button disabled={isSubmitting} className="sm:col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-[#4A3728] px-5 py-4 text-xs font-bold uppercase tracking-widest text-white transition-opacity disabled:opacity-50">
+        {message && <Feedback className="sm:col-span-2" tone={message.startsWith('Reserva criada') ? 'success' : 'error'}>{message}</Feedback>}
+        <Button disabled={isSubmitting} size="lg" className="sm:col-span-2 w-full rounded-2xl uppercase tracking-widest">
           {isSubmitting && <Loader2 className="animate-spin" size={16} />} Criar reserva pendente
-        </button>
+        </Button>
       </form>
-    </div>
+    </Card>
   );
 }
 
 function AdminDashboardContent() {
   const searchParams = useSearchParams();
   const view = searchParams.get('view') || 'reservations';
+  const pageContent: Record<string, { title: string; description: string }> = {
+    reservations: { title: 'Monitor de Reservas', description: 'Acompanhe as reservas do dia.' },
+    operations: { title: 'Operação do dia', description: 'Organize chegadas, atendimento e lista de espera.' },
+    restaurant: { title: 'Áreas e mesas', description: 'Configure os espaços e a capacidade das mesas.' },
+    new_reservation: { title: 'Criar reserva', description: 'Registre reservas feitas diretamente pela equipe.' },
+    decorations: { title: 'Espaços e decorações', description: 'Cadastre os espaços e decorações disponíveis para os clientes.' },
+    special_dates: { title: 'Datas especiais', description: 'Configure datas com taxas de reserva antecipadas.' },
+    blocked_dates: { title: 'Datas bloqueadas', description: 'Bloqueie reservas para datas específicas.' },
+    funcionarios: { title: 'Gestão de equipe', description: 'Gerencie funcionários, cargos e permissões.' },
+    tarefas: { title: 'Gestão de tarefas', description: 'Crie e organize tarefas e checklists.' },
+    produtividade: { title: 'Painel de produtividade', description: 'Monitore a execução das tarefas e aprove conclusões.' },
+    finance: { title: 'Financeiro', description: 'Acompanhe pagamentos, confirmações e valores recebidos.' },
+  };
+  const page = pageContent[view] || pageContent.reservations;
 
   return (
     <AdminLayoutShell activeItem={view}>
-      <header className="p-4 pb-0 flex flex-col gap-2 sm:p-6 sm:pb-0 xl:p-10 xl:pb-0">
-        <h2 className="text-2xl font-serif font-bold uppercase tracking-tight text-[#4A3728] sm:text-3xl">
-           {view === 'reservations' && 'Monitor de Reservas'}
-           {view === 'new_reservation' && 'Criar Reserva'}
-           {view === 'decorations' && 'Espaços & Decorações'}
-          {view === 'special_dates' && 'Gestão de Datas Especiais'}
-          {view === 'blocked_dates' && 'Datas Bloqueadas'}
-          {view === 'funcionarios' && 'Gestão de Equipe'}
-          {view === 'tarefas' && 'Gestão de Tarefas'}
-          {view === 'produtividade' && 'Painel de Produtividade'}
-        </h2>
-        <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/50">
-           {view === 'reservations' && 'Acompanhe as reservas do dia'}
-           {view === 'new_reservation' && 'Registre reservas feitas diretamente pela equipe'}
-           {view === 'decorations' && 'Cadastre mesas, espaços e decorações disponíveis para os clientes'}
-          {view === 'special_dates' && 'Configure datas com taxas de reserva antecipadas'}
-          {view === 'blocked_dates' && 'Bloqueie reservas para datas específicas'}
-          {view === 'funcionarios' && 'Gerencie funcionários e cargos'}
-          {view === 'tarefas' && 'Crie e organize tarefas e checklists'}
-          {view === 'produtividade' && 'Monitore a execução das tarefas e aprove conclusões'}
-        </p>
-      </header>
-      <div className="min-w-0 p-4 sm:p-6 xl:p-10">
-         {view === 'reservations' && <ReservationsView />}
+      <div className="min-w-0 space-y-6 p-4 sm:p-6 xl:p-8 2xl:p-10">
+        <PageHeader title={page.title} description={page.description} />
+        {view === 'reservations' && <ReservationsView />}
          {view === 'new_reservation' && <NewReservationView />}
          {view === 'decorations' && <DecorationsManager />}
          {view === 'restaurant' && <RestaurantManager />}
@@ -819,7 +851,8 @@ function AdminDashboardContent() {
         {view === 'blocked_dates' && <BlockedDatesManager />}
         {view === 'funcionarios' && <FuncionariosManager />}
         {view === 'tarefas' && <TarefasManager />}
-        {view === 'produtividade' && <ProdutividadeDashboard />}
+         {view === 'produtividade' && <ProdutividadeDashboard />}
+         {view === 'finance' && <FinanceDashboard />}
       </div>
     </AdminLayoutShell>
   );

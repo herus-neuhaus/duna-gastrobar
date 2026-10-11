@@ -56,8 +56,8 @@ async function reservation(reservationDate, time = '12:00', guests = 2) {
   const id = randomUUID();
   reservations.push(id);
   await db.query(
-    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source)
-      values ($1,'Synthetic reschedule','reschedule@example.invalid',$2,$3,$4,$5,'pending','website')`,
+    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,cpf)
+      values ($1,'Synthetic reschedule','reschedule@example.invalid',$2,$3,$4,$5,'pending','website','52998224725')`,
     [id, id, reservationDate, time, guests],
   );
   return id;

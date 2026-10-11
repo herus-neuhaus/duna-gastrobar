@@ -25,8 +25,32 @@ describe('POST /api/admin/operations capacity-sensitive actions', () => {
       body: JSON.stringify({ action: 'walk_in', name: 'Walk in', phone: '69912345678', partySize: 2, date: '2026-09-10', time: '18:00', source: 'website' }),
     }));
     expect(response.status).toBe(201);
-    expect(rpc).toHaveBeenCalledWith('create_walk_in_reservation', expect.objectContaining({ p_num_guests: 2, p_reservation_date: '2026-09-10' }));
+    expect(rpc).toHaveBeenCalledWith('create_walk_in_reservation', expect.objectContaining({ p_num_guests: 2, p_reservation_date: '2026-09-10', p_cpf: null }));
     expect(JSON.stringify(rpc.mock.calls[0])).not.toContain('source');
+  });
+
+  it('accepts a valid optional CPF for a walk-in', async () => {
+    mocks.isPanelStaff.mockResolvedValue(true);
+    const rpc = vi.fn(async () => ({ data: [{ id: 'walk-in-id' }], error: null }));
+    mocks.createClient.mockResolvedValue({ rpc });
+    const response = await POST(new Request('http://localhost/api/admin/operations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'walk_in', name: 'Walk in', phone: '69912345678', cpf: '529.982.247-25', partySize: 2, date: '2026-09-10', time: '18:00' }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(rpc).toHaveBeenCalledWith('create_walk_in_reservation', expect.objectContaining({ p_cpf: '52998224725', p_email: null }));
+  });
+
+  it('rejects an invalid CPF when one is provided for a walk-in', async () => {
+    mocks.isPanelStaff.mockResolvedValue(true);
+    const response = await POST(new Request('http://localhost/api/admin/operations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'walk_in', name: 'Walk in', phone: '69912345678', cpf: '11111111111', partySize: 2, date: '2026-09-10', time: '18:00' }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.createClient).not.toHaveBeenCalled();
   });
 
   it('keeps commercial-turn classification owner-only and calls the dedicated RPC', async () => {

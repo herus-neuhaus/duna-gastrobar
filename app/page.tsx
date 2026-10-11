@@ -2,13 +2,18 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Image from 'next/image';
+import { Button, ButtonLink } from '@/components/ui/button';
 import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
 import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { isValidCpf } from '@/lib/cpf';
+import { buildDuplicateReservationMessage, type DuplicateReservationChoice } from '@/lib/reservation-duplicate-message';
 
 type ReservationCredential = { id: string; token: string; phone: string };
 type Decoration = { id: string; name: string; image_url: string; available: boolean };
+type DuplicateReservation = { time: string; guests: number; turn: 'lunch' | 'dinner' };
 
 const RESERVATION_CREDENTIALS_KEY = 'duna-reservation-credentials';
 
@@ -30,6 +35,7 @@ export default function DunaGastrobarReservation() {
   // Status States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [duplicateReservation, setDuplicateReservation] = useState<DuplicateReservation | null>(null);
   const [reservationId, setReservationId] = useState('');
   const [reservationAccessToken, setReservationAccessToken] = useState('');
   const [reservationPaymentAmount, setReservationPaymentAmount] = useState(0);
@@ -126,7 +132,7 @@ export default function DunaGastrobarReservation() {
     return dates;
   };
 
-  const datesList = generateAvailableDates();
+  const datesList = useMemo(() => generateAvailableDates(), []);
 
   const validateForm = () => {
     let valid = true;
@@ -137,10 +143,7 @@ export default function DunaGastrobarReservation() {
       valid = false;
     }
 
-    if (!formData.email.trim()) {
-      errors.email = 'E-mail é obrigatório.';
-      valid = false;
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       errors.email = 'E-mail inválido.';
       valid = false;
     }
@@ -153,8 +156,8 @@ export default function DunaGastrobarReservation() {
       valid = false;
     }
 
-    if (requiresPayment && formData.cpf.replace(/\D/g, '').length !== 11) {
-      errors.cpf = 'Informe um CPF válido para gerar o PIX.';
+    if (!isValidCpf(formData.cpf)) {
+      errors.cpf = 'Informe um CPF válido.';
       valid = false;
     }
 
@@ -194,7 +197,7 @@ export default function DunaGastrobarReservation() {
     }
   };
 
-  const fetchFullDates = async () => {
+  const fetchFullDates = useCallback(async () => {
     const firstDate = format(datesList[0], 'yyyy-MM-dd');
     const lastDate = format(datesList[datesList.length - 1], 'yyyy-MM-dd');
     try {
@@ -216,7 +219,7 @@ export default function DunaGastrobarReservation() {
       setTimeTurnsByDate({});
       setTurnTotals({});
     }
-  };
+  }, [datesList]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -224,7 +227,7 @@ export default function DunaGastrobarReservation() {
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, []);
+  }, [fetchFullDates]);
 
   useEffect(() => {
     if (!date || !time) {
@@ -295,6 +298,7 @@ export default function DunaGastrobarReservation() {
     setFormData({ name: '', email: '', whatsapp: '', cpf: '' });
     setFormErrors({ name: '', email: '', whatsapp: '', cpf: '' });
     setIsSuccess(false);
+    setDuplicateReservation(null);
     setReservationId('');
     setReservationAccessToken('');
     setReservationPaymentAmount(0);
@@ -356,6 +360,11 @@ export default function DunaGastrobarReservation() {
       });
       const result = await response.json();
 
+      if (response.status === 409 && result.code === 'ACTIVE_CPF_RESERVATION_EXISTS') {
+        setDuplicateReservation(result.existingReservation as DuplicateReservation);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(result.error || 'Não foi possível criar a reserva.');
       }
@@ -382,6 +391,21 @@ export default function DunaGastrobarReservation() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const contactTeamAboutDuplicate = (choice: DuplicateReservationChoice) => {
+    if (!duplicateReservation) return;
+    const message = buildDuplicateReservationMessage({
+      choice,
+      name: formData.name,
+      date,
+      time,
+      guests: guests || 0,
+      existingTime: duplicateReservation.time,
+      existingGuests: duplicateReservation.guests,
+    });
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    setDuplicateReservation(null);
   };
 
   const fetchUserReservations = async () => {
@@ -565,24 +589,27 @@ export default function DunaGastrobarReservation() {
               {pixPayment && (
                 <div className="space-y-3">
                   {pixPayment.qrCodeUrl && (
-                    <img
+                    <Image
                       src={pixPayment.qrCodeUrl}
                       alt="QR Code PIX da reserva"
+                      width={224}
+                      height={224}
+                      unoptimized
                       className="mx-auto aspect-square w-full max-w-56 rounded-2xl bg-white p-2"
                     />
                   )}
-                  <button
-                    type="button"
-                    onClick={async () => {
+                   <Button
+                     type="button"
+                     onClick={async () => {
                       await navigator.clipboard.writeText(pixPayment.qrCode);
                       setPixCopied(true);
                       window.setTimeout(() => setPixCopied(false), 2500);
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4A3728] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white active:scale-[0.98]"
+                     className="w-full rounded-xl uppercase tracking-widest"
                   >
                     {pixCopied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                     {pixCopied ? 'Código copiado' : 'Copiar PIX copia e cola'}
-                  </button>
+                   </Button>
                   <p className="text-center text-[9px] text-amber-800/70">O código PIX expira em 30 minutos.</p>
                 </div>
               )}
@@ -603,24 +630,28 @@ export default function DunaGastrobarReservation() {
             </div>
           )}
 
-          <button 
-            onClick={() => handleWhatsAppRedirect('success', guests || 0)}
-            className="w-full py-4 bg-[#25D366] text-white rounded-2xl font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2 shadow-lg shadow-green-200 active:scale-95 transition-all"
+           <Button
+             type="button"
+             variant="whatsapp"
+             onClick={() => handleWhatsAppRedirect('success', guests || 0)}
+             className="mb-3 w-full rounded-2xl uppercase tracking-wider"
           >
             <MessageCircle size={18} />
             {requiresPayment ? 'Falar com a equipe' : 'Confirmar no WhatsApp'}
-          </button>
+           </Button>
           <p className="text-center text-[9px] opacity-60 mb-6 px-4">
             {requiresPayment
               ? 'Não é necessário enviar comprovante: o pagamento é confirmado automaticamente.'
               : 'Clique acima para notificar nossa equipe sobre sua reserva.'}
           </p>
-          <button 
-            onClick={resetForm}
-            className="w-full py-4 bg-transparent text-[#4A3728]/60 rounded-2xl font-bold uppercase tracking-wider text-[10px] hover:bg-[#F5F2ED] transition-colors"
+           <Button
+             type="button"
+             variant="ghost"
+             onClick={resetForm}
+             className="w-full rounded-2xl uppercase tracking-wider text-[#4A3728]/60"
           >
             Fazer outra reserva
-          </button>
+           </Button>
         </div>
       </div>
     );
@@ -634,59 +665,71 @@ export default function DunaGastrobarReservation() {
           <>
         {/* Abertura */}
         <div className="duna-hero h-[500px] w-full relative isolate text-white">
-          <img 
+          <Image
             src="https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=90&w=1200"
             alt="Prato servido no Duna Cozinha & Bar"
-            className="w-full h-full object-cover"
+            fill
+            priority
+            unoptimized
+            sizes="(max-width: 460px) 100vw, 460px"
+            className="object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/10 to-[#100905]" />
           <div className="absolute inset-x-0 top-0 flex justify-center pt-9">
             <div className="duna-brand flex flex-col items-center drop-shadow-lg">
-              <img src="/Favicon-D.png" alt="Duna" className="w-16 h-16 object-contain mb-2" />
+              <Image src="/Favicon-D.png" alt="Duna" width={64} height={64} className="mb-2 h-16 w-16 object-contain" />
               <h1 className="font-serif text-5xl tracking-[0.22em] pl-[0.22em] text-[#f8e3b2]">DUNA</h1>
               <p className="mt-1 text-[10px] font-semibold tracking-[0.42em] pl-[0.42em] text-[#f5dfaa]">COZINHA E BAR</p>
             </div>
           </div>
           <div className="absolute inset-x-0 bottom-0 px-5 pb-6">
-             <button
+             <Button
                type="button"
+               variant="gold"
+               size="lg"
                onClick={() => changePageView('reservation')}
-               className="duna-gold-button flex w-full items-center justify-center gap-3 rounded-2xl px-4 py-4 text-sm font-black uppercase tracking-wide text-[#1c1108] transition-transform active:scale-[0.98]"
+               className="w-full rounded-2xl text-sm font-black uppercase tracking-wide"
              >
                <Calendar size={21} />
                Reservar minha mesa
-             </button>
+             </Button>
           </div>
         </div>
 
         <div className="duna-links px-5 py-5 space-y-3">
-          <a
-            href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7"
+           <ButtonLink
+             variant="dark"
+             size="lg"
+             href="https://maps.app.goo.gl/2zmtd2zZ4wrSxxCT7"
             target="_blank"
             rel="noopener noreferrer"
-            className="duna-dark-link flex items-center justify-center gap-3 rounded-2xl px-4 py-4 text-sm font-bold uppercase tracking-wide text-white transition-colors"
+             className="w-full rounded-2xl text-sm font-bold uppercase tracking-wide"
           >
             <Navigation size={21} />
             Como chegar
-          </a>
-          <a
+           </ButtonLink>
+           <ButtonLink
+             variant="dark"
+             size="lg"
             href={`https://wa.me/${WHATSAPP_NUMBER}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="duna-dark-link flex items-center justify-center gap-3 rounded-2xl px-4 py-4 text-sm font-bold uppercase tracking-wide text-white transition-colors"
+             className="w-full rounded-2xl text-sm font-bold uppercase tracking-wide"
           >
             <MessageCircle size={21} />
             Falar no WhatsApp
-          </a>
-          <a
+           </ButtonLink>
+           <ButtonLink
+             variant="dark"
+             size="lg"
             href="https://www.instagram.com/dunacozinhabar/"
             target="_blank"
             rel="noopener noreferrer"
-            className="duna-dark-link flex items-center justify-center gap-3 rounded-2xl px-4 py-4 text-sm font-bold uppercase tracking-wide text-white transition-colors"
+             className="w-full rounded-2xl text-sm font-bold uppercase tracking-wide"
           >
             <Instagram size={21} />
             Ver Instagram
-          </a>
+           </ButtonLink>
           <div className="border-t border-[#704126] px-2 pt-4 text-[#f8e3b2]">
             <div className="flex items-start gap-3">
               <Clock size={20} className="mt-0.5 shrink-0 text-[#e9a930]" />
@@ -721,7 +764,7 @@ export default function DunaGastrobarReservation() {
               Voltar
             </button>
             <div className="duna-mini-brand mb-7">
-              <img src="/Favicon-D.png" alt="" className="mx-auto mb-1 h-10 w-10 object-contain" />
+              <Image src="/Favicon-D.png" alt="" width={40} height={40} className="mx-auto mb-1 h-10 w-10 object-contain" />
               <p className="font-serif text-3xl font-semibold tracking-[0.22em] pl-[0.22em]">DUNA</p>
               <p className="text-[8px] font-semibold tracking-[0.36em] pl-[0.36em]">COZINHA E BAR</p>
             </div>
@@ -1117,7 +1160,7 @@ export default function DunaGastrobarReservation() {
                           onClick={() => setDecorationId(decoration.id)}
                           className={`overflow-hidden rounded-xl border text-left transition-all ${decoration.available ? decorationId === decoration.id ? 'border-[#4A3728] ring-1 ring-[#4A3728]' : 'border-[#D9CFC1]' : 'cursor-not-allowed border-[#D9CFC1] opacity-45'}`}
                         >
-                          <img src={decoration.image_url} alt="" className="h-20 w-full object-cover" />
+                          <Image src={decoration.image_url} alt="" width={400} height={160} unoptimized className="h-20 w-full object-cover" />
                           <span className="block px-3 py-2 text-[10px] font-bold text-[#4A3728]">
                             {decoration.name}
                             {!decoration.available && <small className="block pt-1 text-[8px] font-medium uppercase tracking-wide">Indisponível neste período</small>}
@@ -1175,7 +1218,7 @@ export default function DunaGastrobarReservation() {
                           setFormData({...formData, email: e.target.value});
                           if (formErrors.email) setFormErrors({...formErrors, email: ''});
                         }}
-                        placeholder="E-mail: joao@email.com"
+                         placeholder="E-mail (opcional): joao@email.com"
                       />
                       {formErrors.email && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.email}</p>}
                     </div>
@@ -1195,31 +1238,30 @@ export default function DunaGastrobarReservation() {
                       />
                       {formErrors.whatsapp && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.whatsapp}</p>}
                     </div>
-                    {requiresPayment && (
-                      <div>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
-                            formErrors.cpf ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
-                          }`}
-                          value={formData.cpf}
-                          onChange={(e) => {
-                            setFormData({...formData, cpf: formatCpf(e.target.value)});
-                            if (formErrors.cpf) setFormErrors({...formErrors, cpf: ''});
-                          }}
-                          placeholder="CPF para o pagamento PIX"
-                        />
-                        {formErrors.cpf && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.cpf}</p>}
-                        <p className="ml-1 mt-1 text-[8px] text-[#4A3728]/50">Exigido pelo Pagar.me para gerar o PIX.</p>
-                      </div>
-                    )}
+                    <div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        required
+                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
+                          formErrors.cpf ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
+                        }`}
+                        value={formData.cpf}
+                        onChange={(e) => {
+                          setFormData({...formData, cpf: formatCpf(e.target.value)});
+                          if (formErrors.cpf) setFormErrors({...formErrors, cpf: ''});
+                        }}
+                        placeholder="CPF do cliente (obrigatório)"
+                      />
+                      {formErrors.cpf && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.cpf}</p>}
+                      <p className="ml-1 mt-1 text-[8px] text-[#4A3728]/50">Obrigatório para concluir a reserva.</p>
+                    </div>
                   </div>
                 )}
 
                 {/* POLÍTICA DE ATRASO / CONCORDÂNCIA */}
-                {date && guests && time && formData.name && formData.email && formData.whatsapp && (!requiresPayment || formData.cpf) && (
+                {date && guests && time && formData.name && formData.whatsapp && isValidCpf(formData.cpf) && (
                   <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex items-start gap-3 animate-in fade-in duration-300">
                     <input
                       id="terms-check"
@@ -1240,14 +1282,14 @@ export default function DunaGastrobarReservation() {
                 {/* BOTÃO DE CONFIRMAÇÃO */}
                 <div className="p-4 border-t border-[#D9CFC1] bg-white rounded-b-[28px]">
                   <button
-                    disabled={!date || !guests || !time || !formData.name || !formData.email || !formData.whatsapp || (requiresPayment && !formData.cpf) || !policyAccepted || isSubmitting}
+                    disabled={!date || !guests || !time || !formData.name || !formData.whatsapp || !isValidCpf(formData.cpf) || !policyAccepted || isSubmitting}
                     onClick={async () => {
                       if (validateForm()) {
                         await handleSubmit();
                       }
                     }}
                     className={`duna-submit w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
-                       policyAccepted && date && guests && time && formData.name && formData.whatsapp && (!requiresPayment || formData.cpf)
+                       policyAccepted && date && guests && time && formData.name && formData.whatsapp && isValidCpf(formData.cpf)
                        ? 'is-ready active:scale-[0.98]'
                       : 'bg-stone-300 cursor-not-allowed shadow-none text-stone-500'
                     }`}
@@ -1526,7 +1568,7 @@ export default function DunaGastrobarReservation() {
                 {pixPayment && (
                   <div className="space-y-3">
                     {pixPayment.qrCodeUrl && (
-                      <img src={pixPayment.qrCodeUrl} alt="QR Code PIX" className="mx-auto aspect-square w-full max-w-52 rounded-xl bg-white p-2" />
+                      <Image src={pixPayment.qrCodeUrl} alt="QR Code PIX" width={208} height={208} unoptimized className="mx-auto aspect-square w-full max-w-52 rounded-xl bg-white p-2" />
                     )}
                     <button
                       type="button"
@@ -1565,6 +1607,25 @@ export default function DunaGastrobarReservation() {
                 Voltar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {duplicateReservation && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="duplicate-reservation-title">
+          <button type="button" className="absolute inset-0 bg-[#4A3728]/60 backdrop-blur-sm" aria-label="Fechar opções de reserva" onClick={() => setDuplicateReservation(null)} />
+          <div className="relative w-full max-w-[380px] rounded-[28px] bg-[#FDFBF7] p-6 text-center text-[#4A3728] shadow-2xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"><AlertCircle size={28} /></div>
+            <h2 id="duplicate-reservation-title" className="mb-2 font-serif text-xl font-bold">Já existe uma reserva para este período</h2>
+            <p className="mb-5 text-sm leading-relaxed text-[#4A3728]/70">
+              Encontramos uma reserva para {date ? format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy') : ''}, às {duplicateReservation.time}, para {duplicateReservation.guests} pessoas. Escolha o que deseja pedir à nossa equipe.
+            </p>
+            <div className="space-y-3">
+              <Button type="button" variant="whatsapp" onClick={() => contactTeamAboutDuplicate('add_to_existing')} className="w-full rounded-xl">Acrescentar pessoas à reserva</Button>
+              <Button type="button" variant="secondary" onClick={() => contactTeamAboutDuplicate('create_another')} className="w-full rounded-xl">Fazer outra reserva</Button>
+              <button type="button" onClick={() => setDuplicateReservation(null)} className="w-full py-2 text-xs font-semibold text-[#4A3728]/55">Voltar ao formulário</button>
+            </div>
+            <p className="mt-4 text-[11px] leading-relaxed text-[#4A3728]/55">O WhatsApp abrirá com uma mensagem pronta, sem CPF. A reserva não será alterada até a equipe confirmar.</p>
           </div>
         </div>
       )}

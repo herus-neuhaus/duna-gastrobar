@@ -849,7 +849,7 @@ export type Database = {
                     "customer_id": string | null;
                     "decoration_id": string | null;
                     "decoration_service_starts_at": string | null;
-                    "email": string;
+                    "email": string | null;
                     "expires_at": string | null;
                     "id": string;
                     "location_id": string | null;
@@ -888,7 +888,7 @@ export type Database = {
                     "customer_id"?: string | null;
                     "decoration_id"?: string | null;
                     "decoration_service_starts_at"?: string | null;
-                    "email": string;
+                    "email": string | null;
                     "expires_at"?: string | null;
                     "id"?: string;
                     "location_id"?: string | null;
@@ -927,7 +927,7 @@ export type Database = {
                     "customer_id"?: string | null;
                     "decoration_id"?: string | null;
                     "decoration_service_starts_at"?: string | null;
-                    "email"?: string;
+                    "email"?: string | null;
                     "expires_at"?: string | null;
                     "id"?: string;
                     "location_id"?: string | null;
@@ -1498,7 +1498,7 @@ export type Database = {
                     "p_commercial_turn"?: string;
                     "p_cpf": string;
                     "p_decoration_id": string;
-                    "p_email": string;
+                    "p_email": string | null;
                     "p_name": string;
                     "p_notes": string;
                     "p_num_guests": number;
@@ -1520,7 +1520,7 @@ export type Database = {
                     "p_capacity_override_reason"?: string;
                     "p_cpf": string;
                     "p_decoration_id": string;
-                    "p_email": string;
+                    "p_email": string | null;
                     "p_name": string;
                     "p_notes": string;
                     "p_num_guests": number;
@@ -1540,10 +1540,11 @@ export type Database = {
             };
             "create_walk_in_reservation": {
                 Args: {
-                    "p_email": string;
+                    "p_email": string | null;
                     "p_name": string;
                     "p_notes": string;
                     "p_num_guests": number;
+                    "p_cpf"?: string | null;
                     "p_reservation_date": string;
                     "p_reservation_time": string;
                     "p_whatsapp": string;

@@ -1,6 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FieldLabel, Input, Select } from '@/components/ui/form-controls';
+import { EmptyState } from '@/components/ui/empty-state';
 
 type Area = { id: string; name: string; active: boolean };
 type Table = { id: string; area_id: string; code: string; min_capacity: number; max_capacity: number; active: boolean };
@@ -64,12 +68,56 @@ export default function RestaurantManager() {
     }
   };
 
-  return <div className="space-y-6">
-    <div className="rounded-3xl border border-[#D9CFC1] bg-white p-6"><h2 className="text-xl font-bold">Áreas e Mesas</h2><p className="mt-1 text-sm text-[#4A3728]/60">Desative itens com histórico em vez de excluí-los.</p></div>
-    <div className="grid gap-6 lg:grid-cols-2">
-      <form onSubmit={(event) => { event.preventDefault(); void (async () => { if (await create({ kind: 'area', name: areaName })) setAreaName(''); })(); }} className="rounded-3xl border border-[#D9CFC1] bg-white p-6 space-y-3"><h3 className="font-bold">Nova área</h3><input required value={areaName} onChange={(event) => setAreaName(event.target.value)} placeholder="Ex.: Varanda" className="w-full rounded-xl bg-[#F5F2ED] px-4 py-3 outline-none"/><button className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white">Criar área</button></form>
-      <form onSubmit={(event) => { event.preventDefault(); void (async () => { if (await create({ kind: 'table', areaId: table.areaId, code: table.code, minCapacity: Number(table.minCapacity), maxCapacity: Number(table.maxCapacity) })) setTable((current) => ({ ...current, code: '' })); })(); }} className="rounded-3xl border border-[#D9CFC1] bg-white p-6 space-y-3"><h3 className="font-bold">Nova mesa</h3><select required value={table.areaId} onChange={(event) => setTable({ ...table, areaId: event.target.value })} className="w-full rounded-xl bg-[#F5F2ED] px-4 py-3">{areas.filter((area) => area.active).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select><div className="grid grid-cols-3 gap-2"><input required value={table.code} onChange={(event) => setTable({ ...table, code: event.target.value })} placeholder="Mesa 01" className="rounded-xl bg-[#F5F2ED] px-3 py-3"/><input required type="number" min="1" value={table.minCapacity} onChange={(event) => setTable({ ...table, minCapacity: event.target.value })} className="rounded-xl bg-[#F5F2ED] px-3 py-3"/><input required type="number" min="1" value={table.maxCapacity} onChange={(event) => setTable({ ...table, maxCapacity: event.target.value })} className="rounded-xl bg-[#F5F2ED] px-3 py-3"/></div><button className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white">Criar mesa</button></form>
+  return <div className="space-y-5">
+    <Card>
+      <CardContent className="p-4 sm:p-5">
+        <p className="text-sm font-semibold text-[#4A3728]">Dica de organização</p>
+        <p className="mt-1 text-sm leading-6 text-[#76695e]">Desative áreas e mesas com histórico em vez de excluí-las.</p>
+      </CardContent>
+    </Card>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Card>
+        <CardHeader><CardTitle>Nova área</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={(event) => { event.preventDefault(); void (async () => { if (await create({ kind: 'area', name: areaName })) setAreaName(''); })(); }} className="space-y-4">
+            <div><FieldLabel htmlFor="new-area-name">Nome da área</FieldLabel><Input id="new-area-name" required value={areaName} onChange={(event) => setAreaName(event.target.value)} placeholder="Ex.: Varanda" /></div>
+            <Button type="submit">Criar área</Button>
+          </form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Nova mesa</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={(event) => { event.preventDefault(); void (async () => { if (await create({ kind: 'table', areaId: table.areaId, code: table.code, minCapacity: Number(table.minCapacity), maxCapacity: Number(table.maxCapacity) })) setTable((current) => ({ ...current, code: '' })); })(); }} className="space-y-4">
+            <div><FieldLabel htmlFor="table-area">Área</FieldLabel><Select id="table-area" required value={table.areaId} onChange={(event) => setTable({ ...table, areaId: event.target.value })}><option value="">Selecione uma área</option>{areas.filter((area) => area.active).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</Select></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div><FieldLabel htmlFor="table-code">Identificação</FieldLabel><Input id="table-code" required value={table.code} onChange={(event) => setTable({ ...table, code: event.target.value })} placeholder="Mesa 01" /></div>
+              <div><FieldLabel htmlFor="table-min">Mínimo de lugares</FieldLabel><Input id="table-min" required type="number" min="1" value={table.minCapacity} onChange={(event) => setTable({ ...table, minCapacity: event.target.value })} /></div>
+              <div><FieldLabel htmlFor="table-max">Máximo de lugares</FieldLabel><Input id="table-max" required type="number" min="1" value={table.maxCapacity} onChange={(event) => setTable({ ...table, maxCapacity: event.target.value })} /></div>
+            </div>
+            <Button type="submit">Criar mesa</Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
-    {areas.map((area) => <section key={area.id} className="rounded-3xl border border-[#D9CFC1] bg-white overflow-hidden"><header className="flex items-center justify-between border-b border-[#D9CFC1] px-6 py-4"><h3 className="font-bold">{area.name}</h3><button onClick={() => void toggle('area', area.id, !area.active)} className="text-xs font-bold text-[#4A3728]">{area.active ? 'Desativar área' : 'Ativar área'}</button></header><div className="divide-y divide-[#D9CFC1]/50">{tables.filter((table) => table.area_id === area.id).map((item) => <div key={item.id} className="flex items-center justify-between px-6 py-4"><span>{item.code} · {item.min_capacity}-{item.max_capacity} lugares</span><button onClick={() => void toggle('table', item.id, !item.active)} className="text-xs font-bold text-[#4A3728]">{item.active ? 'Desativar' : 'Ativar'}</button></div>)}{!tables.some((table) => table.area_id === area.id) && <p className="px-6 py-4 text-sm text-[#4A3728]/50">Sem mesas.</p>}</div></section>)}
+    <div className="grid gap-4 xl:grid-cols-2">
+      {areas.length === 0 && <Card><EmptyState title="Nenhuma área cadastrada" description="Crie uma área para começar a configurar as mesas." /></Card>}
+      {areas.map((area) => {
+        const areaTables = tables.filter((item) => item.area_id === area.id);
+        return <Card key={area.id} className="overflow-hidden">
+          <CardHeader>
+            <div className="min-w-0"><CardTitle>{area.name}</CardTitle><p className="mt-1 text-xs text-[#76695e]">{areaTables.length} {areaTables.length === 1 ? 'mesa' : 'mesas'} · {area.active ? 'Ativa' : 'Inativa'}</p></div>
+            <Button variant="secondary" size="sm" onClick={() => void toggle('area', area.id, !area.active)}>{area.active ? 'Desativar área' : 'Ativar área'}</Button>
+          </CardHeader>
+          <div className="divide-y divide-[#d9cfc1]/60">
+            {areaTables.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+              <div><p className="font-semibold">{item.code}</p><p className="mt-0.5 text-xs text-[#76695e]">{item.min_capacity}–{item.max_capacity} lugares · {item.active ? 'Ativa' : 'Inativa'}</p></div>
+              <Button variant="ghost" size="sm" onClick={() => void toggle('table', item.id, !item.active)}>{item.active ? 'Desativar' : 'Ativar'}</Button>
+            </div>)}
+            {areaTables.length === 0 && <EmptyState title="Sem mesas nesta área" />}
+          </div>
+        </Card>;
+      })}
+    </div>
   </div>;
 }

@@ -53,8 +53,8 @@ function insertQuery(d, guests = 2, options = {}) {
   const id = randomUUID();
   reservationIds.push(id);
   return {
-    text: `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,decoration_id,status,reservation_access_token_hash,source)
-      values ($1,'Synthetic guest','synthetic@example.invalid',$2,$3,$4,$5,$6,$7,'synthetic-token',$8) returning id`,
+    text: `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,decoration_id,status,reservation_access_token_hash,source,cpf)
+      values ($1,'Synthetic guest','synthetic@example.invalid',$2,$3,$4,$5,$6,$7,'synthetic-token',$8,'52998224725') returning id`,
     values: [id, options.phone ?? id, d, options.time ?? '12:00', guests, options.decoration ?? null, options.status ?? 'pending', options.source ?? 'website'],
   };
 }
@@ -219,6 +219,24 @@ test('synthetic payment: exact amount, confirmation and idempotent database tran
   assert.equal(paid.rows[0].status, 'confirmed');
   assert.equal(paid.rows[0].payment_status, 'paid');
   assert.equal((await db.query('select * from complete_reservation_payment($1,100)', [id])).rowCount, 0);
+});
+
+test('reservation persistence allows a missing email but requires CPF for bookings', async () => {
+  const d = await date();
+  const id = randomUUID();
+  reservationIds.push(id);
+  const saved = await db.query(
+    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,cpf)
+     values ($1,'Optional email',null,'69912345678',$2,'12:00',2,'pending','website','52998224725') returning email`,
+    [id, d],
+  );
+  assert.equal(saved.rows[0].email, null);
+
+  await assert.rejects(db.query(
+    `insert into reservations(name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source)
+     values ('Missing CPF',null,'69912345679',$1,'12:00',2,'pending','website')`,
+    [d],
+  ), /RESERVATION_CPF_REQUIRED/);
 });
 
 test('OUT-02: increasing a free reservation to 15 must require a fee', { todo: 'Plano financeiro: rule explicitly deferred by business' }, async () => {

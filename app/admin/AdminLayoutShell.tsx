@@ -11,23 +11,79 @@ import {
   CalendarDays,
   CalendarOff,
   CalendarPlus,
-  ImagePlus
-  ,TableProperties
+  ImagePlus,
+  TableProperties,
+  BadgeDollarSign,
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ForcePasswordChangeModal from '@/app/components/ForcePasswordChangeModal';
+import { Button } from '@/components/ui/button';
+
+const navigationGroups = [
+  {
+    label: 'Atendimento',
+    items: [
+      { key: 'reservations', label: 'Reservas', href: '/admin?view=reservations', icon: CalendarIcon },
+      { key: 'operations', label: 'Operação do dia', href: '/admin?view=operations', icon: CalendarDays },
+      { key: 'restaurant', label: 'Áreas e mesas', href: '/admin?view=restaurant', icon: TableProperties },
+      { key: 'new_reservation', label: 'Criar reserva', href: '/admin?view=new_reservation', icon: CalendarPlus },
+    ],
+  },
+  {
+    label: 'Configurações',
+    items: [
+      { key: 'decorations', label: 'Espaços e decorações', href: '/admin?view=decorations', icon: ImagePlus },
+      { key: 'special_dates', label: 'Datas especiais', href: '/admin?view=special_dates', icon: CalendarDays },
+      { key: 'blocked_dates', label: 'Bloqueios', href: '/admin?view=blocked_dates', icon: CalendarOff },
+    ],
+  },
+  {
+    label: 'Equipe',
+    items: [
+      { key: 'funcionarios', label: 'Equipe e acessos', href: '/admin?view=funcionarios', icon: Users },
+      { key: 'tarefas', label: 'Tarefas', href: '/admin?view=tarefas', icon: CalendarIcon },
+      { key: 'produtividade', label: 'Produtividade', href: '/admin?view=produtividade', icon: CalendarDays },
+    ],
+  },
+  {
+    label: 'Gestão',
+    items: [
+      { key: 'finance', label: 'Financeiro', href: '/admin?view=finance', icon: BadgeDollarSign },
+    ],
+  },
+] satisfies { label: string; items: { key: string; label: string; href: string; icon: LucideIcon }[] }[];
 
 export default function AdminLayoutShell({ children, activeItem }: { children: React.ReactNode, activeItem: string }) {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => Object.fromEntries(
+    navigationGroups.map((group) => [group.label, group.items.some((item) => item.key === activeItem)]),
+  ));
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [authError, setAuthError] = useState('');
   const [supabase] = useState(() => createClient());
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMenuOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isMenuOpen]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -45,10 +101,16 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
       
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('force_password_change')
+          .select('force_password_change,role')
           .eq('id', user.id)
           .single();
         if (profileError) throw profileError;
+        setUserRole(profile.role);
+
+        if (activeItem === 'finance' && !['dono', 'gerente'].includes(profile.role || '')) {
+          router.replace('/admin?view=reservations');
+          return;
+        }
         
         if (profile?.force_password_change) {
           setForcePasswordChange(true);
@@ -61,7 +123,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
       }
     };
     checkAuth();
-  }, [supabase, router]);
+  }, [activeItem, supabase, router]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -75,7 +137,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
           {!authError && <Loader2 className="w-12 h-12 text-[#4A3728] animate-spin" />}
           {authError ? <>
             <p role="alert" className="text-center text-sm">{authError}</p>
-            <button type="button" onClick={() => window.location.reload()} className="rounded-xl bg-[#4A3728] px-4 py-3 text-xs font-bold uppercase text-white">Tentar novamente</button>
+            <Button type="button" onClick={() => window.location.reload()}>Tentar novamente</Button>
           </> : <p className="text-xs uppercase tracking-[0.2em] font-serif font-bold">Autenticando...</p>}
         </div>
       </div>
@@ -83,7 +145,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col lg:flex-row">
+    <div className="min-h-screen bg-[#FDFBF7] font-sans text-[#4A3728] flex flex-col lg:h-screen lg:flex-row lg:overflow-hidden">
       {forcePasswordChange && userId && (
         <ForcePasswordChangeModal 
           onSuccess={() => setForcePasswordChange(false)} 
@@ -94,17 +156,14 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsMenuOpen(true)}
+            aria-expanded={isMenuOpen}
+            aria-controls="admin-sidebar"
             className="p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-all"
             aria-label="Abrir menu"
           >
             <Menu size={20} />
           </button>
-          <span 
-            onClick={() => router.push('/admin')}
-            className="text-lg font-serif font-bold tracking-widest uppercase cursor-pointer"
-          >
-            DUNA
-          </span>
+          <Link href="/admin?view=reservations" onClick={() => setIsMenuOpen(false)} className="text-lg font-serif font-bold tracking-widest uppercase">DUNA</Link>
         </div>
         
         {userEmail && (
@@ -123,12 +182,13 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
       {isMenuOpen && (
         <div 
           onClick={() => setIsMenuOpen(false)}
+          aria-hidden="true"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 lg:hidden transition-opacity duration-300 animate-in fade-in"
         />
       )}
 
       {/* Sidebar (drawer on mobile, static on desktop) */}
-      <aside className={`fixed lg:static top-0 bottom-0 left-0 w-72 bg-[#4A3728] text-white border-r border-[#3d2d21] flex flex-col shrink-0 z-50 overflow-y-auto transform lg:transform-none transition-transform duration-300 ease-in-out ${
+      <aside id="admin-sidebar" className={`admin-sidebar fixed lg:sticky lg:top-0 top-0 bottom-0 left-0 w-72 max-w-[85vw] bg-[#4A3728] text-white border-r border-[#3d2d21] flex flex-col shrink-0 z-50 overflow-y-auto transform lg:h-screen lg:min-h-0 lg:transform-none transition-transform duration-300 ease-in-out ${
         isMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
         <div className="p-8 flex items-center justify-between">
@@ -154,90 +214,59 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
           </button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
-          <Link
-            href="/admin?view=reservations"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'reservations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarIcon size={18} /> Reservas
-          </Link>
-          <Link href="/admin?view=operations" onClick={() => setIsMenuOpen(false)} className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'operations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}>
-            <CalendarIcon size={18} /> Operação do dia
-          </Link>
-          <Link href="/admin?view=restaurant" onClick={() => setIsMenuOpen(false)} className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'restaurant' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}>
-            <TableProperties size={18} /> Áreas e mesas
-          </Link>
-
-          <Link
-            href="/admin?view=new_reservation"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'new_reservation' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarPlus size={18} /> Criar Reserva
-          </Link>
-
-          <Link
-            href="/admin?view=decorations"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'decorations' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <ImagePlus size={18} /> Espaços & Decorações
-          </Link>
-          
-          <Link 
-            href="/admin?view=special_dates"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'special_dates' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarDays size={18} /> Datas Especiais
-          </Link>
-
-          <Link 
-            href="/admin?view=blocked_dates"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'blocked_dates' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarOff size={18} /> Bloqueios
-          </Link>
-
-          <Link 
-            href="/admin?view=funcionarios"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'funcionarios' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <Users size={18} /> Equipe
-          </Link>
-
-          <Link 
-            href="/admin?view=tarefas"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'tarefas' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarIcon size={18} /> Tarefas
-          </Link>
-
-          <Link 
-            href="/admin?view=produtividade"
-            onClick={() => setIsMenuOpen(false)}
-            className={`w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs transition-all ${activeItem === 'produtividade' ? 'bg-white text-[#4A3728] shadow-lg' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
-          >
-            <CalendarDays size={18} /> Produtividade
-          </Link>
+        <nav aria-label="Navegação do painel" className="flex-1 space-y-6 px-4">
+          {navigationGroups.map((group) => {
+            const items = group.items.filter((item) => item.key !== 'finance' || ['dono', 'gerente'].includes(userRole || ''));
+            if (items.length === 0) return null;
+            const isExpanded = expandedGroups[group.label] ?? false;
+            const groupId = `admin-nav-${group.label.toLowerCase().replace(/\s+/g, '-')}`;
+            return <section key={group.label} aria-label={group.label}>
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={groupId}
+                onClick={() => setExpandedGroups((current) => ({ ...current, [group.label]: !isExpanded }))}
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-4 text-left text-[10px] font-bold uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+              >
+                {group.label}
+                <ChevronDown size={16} aria-hidden="true" className={`shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              {isExpanded && <div id={groupId} className="tuc-menu mt-1 space-y-1">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeItem === item.key;
+                  return <Link
+                    key={item.key}
+                    href={item.href}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setExpandedGroups((current) => ({ ...current, [group.label]: true }));
+                    }}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`tuc-menu__item w-full text-xs font-semibold ${isActive ? 'is-active' : ''}`}
+                  >
+                    <span className="tuc-menu__icon"><Icon size={18} aria-hidden="true" /></span>{item.label}
+                  </Link>;
+                })}
+              </div>}
+            </section>;
+          })}
         </nav>
 
         <div className="p-6 border-t border-white/10">
-          <button 
+          <Button
+            type="button"
             onClick={handleLogout}
-            className="w-full min-h-[44px] flex items-center gap-4 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-xs text-red-300 hover:text-red-100 hover:bg-red-500/20 transition-all"
+            variant="ghost"
+            className="w-full justify-start rounded-2xl px-6 uppercase tracking-widest text-red-200 hover:bg-red-500/20 hover:text-red-100"
           >
             <LogOut size={18} /> Sair do Painel
-          </button>
+          </Button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex min-h-screen flex-col overflow-x-hidden pt-16 lg:pt-0 bg-[#FDFBF7]">
+      <main className="flex-1 flex min-h-screen flex-col overflow-x-hidden overflow-y-auto pt-16 lg:h-screen lg:min-h-0 lg:pt-0 bg-[#FDFBF7]">
         {children}
       </main>
     </div>

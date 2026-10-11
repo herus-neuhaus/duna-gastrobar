@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isPanelStaff, isReservationOwner } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { isValidCpf } from '@/lib/cpf';
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -121,21 +122,24 @@ export async function POST(request: Request) {
   if (body.action === 'walk_in') {
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
     const date = typeof body.date === 'string' ? body.date : '';
     const time = typeof body.time === 'string' ? body.time : '';
     const partySize = body.partySize;
-    if (name.length < 2 || name.length > 120 || !/^\d{10,13}$/.test(phone.replace(/\D/g, '')) || !Number.isInteger(partySize) || Number(partySize) < 1 || Number(partySize) > 30 || !isValidDate(date) || !isValidTime(time)) {
-      return NextResponse.json({ error: 'Confira nome, telefone, quantidade, data e horário.' }, { status: 400 });
+    if (name.length < 2 || name.length > 120 || !/^\d{10,13}$/.test(phone.replace(/\D/g, '')) || (email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || (cpf !== '' && !isValidCpf(cpf)) || !Number.isInteger(partySize) || Number(partySize) < 1 || Number(partySize) > 30 || !isValidDate(date) || !isValidTime(time)) {
+      return NextResponse.json({ error: 'Confira nome, telefone, CPF (se informado), quantidade, data e horário.' }, { status: 400 });
     }
     const supabase = createAdminClient();
     const { data, error } = await (await createClient()).rpc('create_walk_in_reservation', {
       p_name: name,
-      p_email: typeof body.email === 'string' && body.email.includes('@') ? body.email : '',
+      p_email: email || null,
       p_whatsapp: phone,
       p_reservation_date: date,
       p_reservation_time: time,
       p_num_guests: Number(partySize),
       p_notes: typeof body.notes === 'string' ? body.notes.trim() : '',
+      p_cpf: cpf || null,
     });
     const reservation = data?.[0];
     if (error || !reservation) return NextResponse.json({ error: walkInErrorMessage(error?.message || '') }, { status: 400 });

@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Loader2, CalendarDays, AlertCircle, Pencil, X, Save } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FieldLabel, Input } from '@/components/ui/form-controls';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 type SpecialDate = {
   id: string;
@@ -144,7 +149,7 @@ export default function SpecialDatesManager() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="bg-white rounded-[28px] p-5 md:p-7 border border-[#D9CFC1] flex items-start gap-4 shadow-sm">
+      <Card className="flex items-start gap-4 p-5 shadow-sm md:p-7">
         <div className="w-12 h-12 shrink-0 bg-[#F5F2ED] rounded-2xl flex items-center justify-center text-[#4A3728]">
           <CalendarDays size={24} />
         </div>
@@ -152,44 +157,44 @@ export default function SpecialDatesManager() {
           <h3 className="text-lg md:text-xl font-bold text-[#4A3728]">Datas Especiais</h3>
           <p className="mt-1 text-sm leading-relaxed text-[#4A3728]/60">Configure apenas os próximos eventos com taxa ou pacote de reserva.</p>
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)] gap-6 xl:gap-8">
-        <form onSubmit={handleAddDate} className="bg-white rounded-[28px] border border-[#D9CFC1] p-5 md:p-6 shadow-sm space-y-4 h-fit xl:sticky xl:top-6">
+        <form onSubmit={handleAddDate} className="ui-card h-fit space-y-4 p-5 shadow-sm md:p-6 xl:sticky xl:top-6">
           <div className="flex items-center justify-between gap-4 mb-2">
             <h4 className="text-sm font-bold uppercase tracking-widest text-[#4A3728]">Nova data</h4>
             <span className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/40">Futuras</span>
           </div>
             <div>
-              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Data</label>
-              <input 
+              <FieldLabel htmlFor="special-date">Data</FieldLabel>
+              <Input
+                id="special-date"
                 type="date" 
                 required
                 min={today}
                 value={newDate} 
                 onChange={e => setNewDate(e.target.value)}
-                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Descrição (ex: Dia dos Namorados)</label>
-              <input 
+              <FieldLabel htmlFor="special-description">Descrição (ex: Dia dos Namorados)</FieldLabel>
+              <Input
+                id="special-description"
                 type="text" 
                 value={description} 
                 onChange={e => setDescription(e.target.value)}
-                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                 placeholder="Opcional"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Pessoas Incluídas (Ex: 4 para mesas fechadas)</label>
-              <input 
+              <FieldLabel htmlFor="special-included-guests">Pessoas Incluídas (Ex: 4 para mesas fechadas)</FieldLabel>
+              <Input
+                id="special-included-guests"
                 type="number" 
                 value={includedGuests} 
                 onChange={e => setIncludedGuests(e.target.value)}
-                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                 placeholder="Deixe em branco para livre escolha"
               />
             </div>
@@ -207,46 +212,44 @@ export default function SpecialDatesManager() {
 
             {requiresFee && (
               <div className="animate-in fade-in slide-in-from-top-2">
-                <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Valor da Taxa (R$)</label>
-                <input 
+                <FieldLabel htmlFor="special-fee">Valor da Taxa (R$)</FieldLabel>
+                <Input
+                  id="special-fee"
                   type="number" 
                   step="0.01"
                   required
                   value={feeAmount} 
                   onChange={e => setFeeAmount(e.target.value)}
-                  className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
                 />
                 <p className="text-[9px] mt-2 text-[#4A3728]/50 italic">*O valor será revertido em consumação no dia.</p>
               </div>
             )}
 
-            <button 
+            <Button
               type="submit"
               disabled={isSubmitting || !newDate}
-              className="w-full mt-4 py-4 bg-[#4A3728] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#3d2d21] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              size="lg"
+              className="mt-4 w-full uppercase tracking-widest"
             >
               {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> Adicionar Data</>}
-            </button>
+            </Button>
         </form>
 
-        <div className="bg-white rounded-[28px] border border-[#D9CFC1] shadow-sm overflow-hidden min-h-[300px]">
-          <div className="flex items-center justify-between gap-4 border-b border-[#D9CFC1]/60 px-5 py-4 md:px-6">
+        <Card className="min-h-[300px] overflow-hidden shadow-sm">
+          <CardHeader>
             <div>
-              <h4 className="font-bold text-[#4A3728]">Próximas datas</h4>
+              <CardTitle>Próximas datas</CardTitle>
               <p className="mt-0.5 text-xs text-[#4A3728]/55">Datas passadas permanecem no histórico, mas não ficam disponíveis para reserva.</p>
             </div>
-            <span className="shrink-0 rounded-full bg-[#F5F2ED] px-3 py-1 text-xs font-bold text-[#4A3728]">{dates.length}</span>
-          </div>
+            <StatusBadge label={`${dates.length}`} />
+          </CardHeader>
             {loading ? (
               <div className="p-20 flex flex-col items-center justify-center">
                 <Loader2 className="w-10 h-10 text-[#4A3728]/20 animate-spin mb-4" />
                 <p className="text-xs font-bold uppercase tracking-widest text-[#4A3728]/40">Carregando...</p>
               </div>
             ) : dates.length === 0 ? (
-              <div className="p-20 text-center">
-                <CalendarDays size={40} className="mx-auto text-[#4A3728]/10 mb-4" />
-                <p className="text-sm font-bold text-[#4A3728]/40">Nenhuma próxima data especial.</p>
-              </div>
+              <EmptyState icon={<CalendarDays size={32} />} title="Nenhuma próxima data especial" description="As datas cadastradas aparecerão aqui." />
             ) : (
               <div className="divide-y divide-[#D9CFC1]/40">
                 {dates.map((d) => (
@@ -265,31 +268,31 @@ export default function SpecialDatesManager() {
                         </div>
                         <div className="mt-1">
                           {d.requires_fee ? (
-                            <span className="px-2.5 py-1 inline-block bg-amber-100 text-amber-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-amber-200">
-                              Taxa: R$ {Number(d.fee_amount).toFixed(2)}
-                            </span>
+                            <StatusBadge label={`Taxa: R$ ${Number(d.fee_amount).toFixed(2)}`} tone="warning" />
                           ) : (
-                            <span className="px-2.5 py-1 inline-block bg-gray-100 text-gray-800 rounded-md text-[10px] font-bold uppercase tracking-wider border border-gray-200">
-                              Sem Taxa
-                            </span>
+                            <StatusBadge label="Sem taxa" />
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <button 
+                        <Button
                           onClick={() => startEdit(d)}
-                          className="flex-1 sm:flex-none px-3 py-2.5 text-[#4A3728] bg-[#F5F2ED] hover:bg-[#EBE6DD] rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
                           title="Editar"
                         >
                           <Pencil size={14} /> Editar
-                        </button>
-                        <button 
+                        </Button>
+                        <Button
                           onClick={() => handleDelete(d.id)}
-                          className="flex-1 sm:flex-none px-3 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors inline-flex items-center justify-center gap-2 text-xs font-bold"
+                          variant="danger"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
                           title="Remover"
                         >
                           <Trash2 size={14} /> Apagar
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
@@ -298,38 +301,38 @@ export default function SpecialDatesManager() {
                         <div className="bg-white p-5 md:p-6 rounded-2xl border border-[#D9CFC1] shadow-sm animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between mb-4">
                             <h4 className="text-sm font-bold uppercase tracking-widest text-[#4A3728]">Editar Data Especial</h4>
-                            <button onClick={() => setEditingId(null)} className="p-2 hover:bg-[#F5F2ED] rounded-lg text-[#4A3728]/60 hover:text-[#4A3728] transition-colors">
+                            <Button type="button" onClick={() => setEditingId(null)} variant="ghost" size="icon" aria-label="Fechar edição">
                               <X size={20} />
-                            </button>
+                            </Button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Data</label>
-                              <input 
+                              <FieldLabel htmlFor={`edit-special-date-${d.id}`}>Data</FieldLabel>
+                              <Input
+                                id={`edit-special-date-${d.id}`}
                                 type="date" 
                                 required
                                 value={editDate} 
                                 onChange={e => setEditDate(e.target.value)}
-                                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Descrição</label>
-                              <input 
+                              <FieldLabel htmlFor={`edit-special-description-${d.id}`}>Descrição</FieldLabel>
+                              <Input
+                                id={`edit-special-description-${d.id}`}
                                 type="text" 
                                 value={editDescription} 
                                 onChange={e => setEditDescription(e.target.value)}
-                                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                                 placeholder="Opcional"
                               />
                             </div>
                             <div className="md:col-span-2">
-                              <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Pessoas Incluídas (Opcional)</label>
-                              <input 
+                              <FieldLabel htmlFor={`edit-special-guests-${d.id}`}>Pessoas Incluídas (Opcional)</FieldLabel>
+                              <Input
+                                id={`edit-special-guests-${d.id}`}
                                 type="number" 
                                 value={editIncludedGuests} 
                                 onChange={e => setEditIncludedGuests(e.target.value)}
-                                className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-3 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none placeholder:text-[#4A3728]/30"
                                 placeholder="Deixe vazio para não limitar"
                               />
                             </div>
@@ -342,40 +345,45 @@ export default function SpecialDatesManager() {
                                 id="edit-req-fee"
                                 checked={editRequiresFee}
                                 onChange={e => setEditRequiresFee(e.target.checked)}
-                                className="w-5 h-5 rounded-md border-[#D9CFC1] text-[#4A3728] focus:ring-[#4A3728] cursor-pointer"
+                                className="tuc-check"
                               />
                               <label htmlFor="edit-req-fee" className="text-xs font-bold text-[#4A3728] cursor-pointer">Cobrar taxa</label>
                             </div>
 
                             {editRequiresFee && (
                               <div className="flex-1">
-                                <label className="text-[10px] font-bold uppercase text-[#4A3728]/60 ml-1">Valor da Taxa (R$)</label>
-                                <input 
+                                <FieldLabel htmlFor={`edit-special-fee-${d.id}`}>Valor da Taxa (R$)</FieldLabel>
+                                <Input
+                                  id={`edit-special-fee-${d.id}`}
                                   type="number" 
                                   step="0.01"
                                   required
                                   value={editFeeAmount} 
                                   onChange={e => setEditFeeAmount(e.target.value)}
-                                  className="w-full mt-1 bg-[#F5F2ED] border-none rounded-xl px-4 py-2 text-sm text-[#4A3728] font-bold focus:ring-1 focus:ring-[#4A3728] outline-none"
                                 />
                               </div>
                             )}
                           </div>
 
                           <div className="flex flex-col md:flex-row justify-end mt-6 gap-3">
-                            <button 
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="lg"
                               onClick={() => setEditingId(null)}
-                              className="w-full md:w-auto px-6 py-3.5 md:py-3 bg-[#F5F2ED] text-[#4A3728] rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#EBE6DD] transition-all"
+                              className="w-full uppercase tracking-widest md:w-auto"
                             >
                               Cancelar
-                            </button>
-                            <button 
+                            </Button>
+                            <Button
+                              type="button"
                               onClick={handleSaveEdit}
                               disabled={isSubmitting || !editDate}
-                              className="w-full md:w-auto px-6 py-3.5 md:py-3 bg-[#4A3728] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#3d2d21] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                              size="lg"
+                              className="w-full uppercase tracking-widest md:w-auto"
                             >
                               {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <><Save size={16} /> Salvar Alterações</>}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -384,7 +392,7 @@ export default function SpecialDatesManager() {
                 ))}
               </div>
             )}
-        </div>
+        </Card>
       </div>
     </div>
   );

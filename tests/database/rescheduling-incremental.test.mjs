@@ -15,8 +15,8 @@ const currentId = randomUUID();
 
 async function createReservation(id, assignedTableId) {
   await db.query(
-    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source)
-      values ($1,'Synthetic incremental','incremental@example.invalid',$2,$3,'12:00',2,'pending','website')`,
+    `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,cpf)
+      values ($1,'Synthetic incremental','incremental@example.invalid',$2,$3,'12:00',2,'pending','website','52998224725')`,
     [id, id, date],
   );
   await db.query('select * from replace_reservation_table_assignments($1,$2::uuid[])', [id, [assignedTableId]]);
