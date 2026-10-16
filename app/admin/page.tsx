@@ -48,6 +48,7 @@ import RestaurantManager from './RestaurantManager';
 import ReservationTableAllocator from './ReservationTableAllocator';
 import OperationsDashboard from './OperationsDashboard';
 import FinanceDashboard from './FinanceDashboard';
+import EstabelecimentoManager from './EstabelecimentoManager';
 import { PageHeader } from '@/components/ui/page-header';
 import { ReservationStatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -649,8 +650,30 @@ function NewReservationView() {
   const [specialDates, setSpecialDates] = useState<SpecialDate[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+  const [horariosDisponiveis, setHorariosDisponiveis] = useState<string[]>([]);
+  const [carregandoHorarios, setCarregandoHorarios] = useState(true);
+  const [erroHorarios, setErroHorarios] = useState('');
 
   const guests = Number(form.guests);
+  useEffect(() => {
+    const controller = new AbortController();
+    const carregarHorarios = async () => {
+      setCarregandoHorarios(true);
+      setErroHorarios('');
+      setHorariosDisponiveis([]);
+      try {
+        const response = await fetch(`/api/admin/reservations/availability?date=${form.date}`, { cache: 'no-store', signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Não foi possível consultar os horários.');
+        setHorariosDisponiveis(data.horarios || []);
+        setForm((atual) => ({ ...atual, time: data.horarios?.includes(atual.time) ? atual.time : data.horarios?.[0] || '' }));
+      } catch (error) {
+        if (!controller.signal.aborted) setErroHorarios(error instanceof Error ? error.message : 'Não foi possível consultar os horários.');
+      } finally { if (!controller.signal.aborted) setCarregandoHorarios(false); }
+    };
+    const timeout = window.setTimeout(() => { void carregarHorarios(); }, 0);
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [form.date]);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void fetch('/api/admin/decorations', { cache: 'no-store' })
@@ -698,6 +721,10 @@ function NewReservationView() {
 
   const createReservation = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!form.scheduleOverrideReason && (carregandoHorarios || !horariosDisponiveis.includes(form.time))) {
+      setMessage('Selecione um horário disponível na agenda.');
+      return;
+    }
     setIsSubmitting(true);
     setMessage('');
 
@@ -769,7 +796,12 @@ function NewReservationView() {
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Horário</span>
-          <Input required type="time" value={form.time} onChange={(event) => updateField('time', event.target.value)} />
+          {form.scheduleOverrideReason ? <Input required type="time" value={form.time} onChange={(event) => updateField('time', event.target.value)} /> : <Select required disabled={carregandoHorarios} value={form.time} onChange={(event) => updateField('time', event.target.value)}>
+            <option value="">{carregandoHorarios ? 'Carregando agenda…' : 'Selecione um horário'}</option>
+            {horariosDisponiveis.map((horario) => <option key={horario} value={horario}>{horario}</option>)}
+          </Select>}
+          {erroHorarios && <span role="alert" className="mt-1 block text-xs text-red-700">{erroHorarios}</span>}
+          {!carregandoHorarios && !erroHorarios && !horariosDisponiveis.length && <span className="mt-1 block text-xs text-[#4A3728]/60">Sem horários de reserva nesta data.</span>}
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Pessoas</span>
@@ -835,6 +867,7 @@ function AdminDashboardContent() {
     tarefas: { title: 'Gestão de tarefas', description: 'Crie e organize tarefas e checklists.' },
     produtividade: { title: 'Painel de produtividade', description: 'Monitore a execução das tarefas e aprove conclusões.' },
     finance: { title: 'Financeiro', description: 'Acompanhe pagamentos, confirmações e valores recebidos.' },
+    estabelecimento: { title: 'Configurações do estabelecimento', description: 'Organize o funcionamento semanal, os horários de reservas e as datas excepcionais.' },
   };
   const page = pageContent[view] || pageContent.reservations;
 
@@ -853,6 +886,7 @@ function AdminDashboardContent() {
         {view === 'tarefas' && <TarefasManager />}
          {view === 'produtividade' && <ProdutividadeDashboard />}
          {view === 'finance' && <FinanceDashboard />}
+         {view === 'estabelecimento' && <EstabelecimentoManager />}
       </div>
     </AdminLayoutShell>
   );

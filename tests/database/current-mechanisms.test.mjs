@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 
@@ -92,7 +93,8 @@ async function race(firstQuery, secondQuery) {
 }
 
 test('schema: sequential history, enabled capacity trigger, RLS and constraints', async () => {
-  assert.equal((await db.query('select count(*)::int n from supabase_migrations.schema_migrations')).rows[0].n, 24);
+  const migrations = readdirSync(new URL('../../supabase/migrations/', import.meta.url)).filter((file) => file.endsWith('.sql'));
+  assert.equal((await db.query('select count(*)::int n from supabase_migrations.schema_migrations')).rows[0].n, migrations.length + 1);
   assert.equal((await db.query("select tgenabled from pg_trigger where tgname='reservation_service_capacity'")).rows[0].tgenabled, 'O');
   assert.equal((await db.query("select count(*)::int n from pg_policies where policyname='No direct access to reservation recovery challenges'")).rows[0].n, 1);
   assert.equal((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and not c.relrowsecurity")).rows[0].n, 0);
