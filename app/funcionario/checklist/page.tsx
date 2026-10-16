@@ -205,6 +205,7 @@ export default function ChecklistPage() {
           <p className="text-[10px] text-white/60 tracking-widest uppercase mt-1">{format(new Date(), 'dd/MM/yyyy')}</p>
         </div>
         <div className="flex items-center gap-3">
+          <Button type="button" variant="ghost" size="sm" onClick={() => router.push('/admin?view=operations')} className="bg-white/10 text-white hover:bg-white/20">Operação</Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => { setEditName(userName || ''); setIsEditingProfile(true); }} className="bg-white/10 text-white hover:bg-white/20">
             <User size={14} /> <span className="hidden sm:inline">{userName || 'Perfil'}</span>
           </Button>

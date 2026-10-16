@@ -2,10 +2,10 @@
 
 ## Acesso e escopo
 
-O dono acessa **Configurações → Estabelecimento** (`/admin?view=estabelecimento`).
+Administradores acessam **Configurações → Estabelecimento** (`/admin?view=estabelecimento`).
 As novas tabelas são `configuracoes_estabelecimento`, `dias_funcionamento`,
 `periodos_funcionamento` e `alteracoes_funcionamento`. As tabelas existentes
-mantêm os nomes originais. Somente o dono pode salvar, com sessão autenticada,
+mantêm os nomes originais. Somente administradores podem salvar, com sessão autenticada,
 RPC transacional, controle de versão e auditoria imutável.
 
 ## Funcionamento não é janela de reserva
@@ -57,7 +57,7 @@ etapas separadas; a aplicação da migração não publica o frontend.
 
 O advisor sinaliza a RPC `salvar_funcionamento_estabelecimento` por usar
 `SECURITY DEFINER` com execução por `authenticated`. É intencional: a função
-verifica o dono antes de qualquer escrita; `anon` não tem execução e usuários
+verifica o nível Administrador antes de qualquer escrita; `anon` não tem execução e usuários
 autenticados não têm escrita direta nas tabelas. Os testes cobrem essa fronteira.
 
 Em outros ambientes, revisar backup/ambiente e aplicar pelo processo autorizado.

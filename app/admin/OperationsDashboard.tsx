@@ -500,14 +500,14 @@ export default function OperationsDashboard() {
 
     {data.classificationIssues.length > 0 && <section className="rounded-3xl border border-[#D9CFC1] bg-white">
       <header className="border-b border-[#D9CFC1] p-5 font-bold">Reservas sem turno classificado ({data.classificationIssues.length})</header>
-      <p className="px-5 pt-4 text-xs text-[#4A3728]/60">A classificação exige revisão do dono. Escolha o turno confirmado pela equipe e registre o motivo.</p>
+      <p className="px-5 pt-4 text-xs text-[#4A3728]/60">A classificação exige revisão de um administrador. Escolha o turno confirmado pela equipe e registre o motivo.</p>
       {data.classificationIssues.map((issue) => {
         const value = classifications[issue.id] || { turn: '', reason: '' };
         return <div key={issue.id} className="grid gap-3 border-b border-[#D9CFC1]/50 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div><p className="font-bold">{formatDate(issue.reservation_date)}</p><p className="mt-1 text-xs text-[#4A3728]/60">{issue.reservation_time.slice(0, 5)} · {issue.num_guests} pessoas · {statusLabel(issue.status)}</p></div>
           <Select disabled={!data.canClassifyHistoricalReservations} value={value.turn} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, turn: event.target.value } }))}><option value="">Selecione o turno</option><option value="lunch">Almoço</option><option value="dinner">Jantar</option></Select>
           <Input disabled={!data.canClassifyHistoricalReservations} value={value.reason} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, reason: event.target.value } }))} maxLength={1000} placeholder="Motivo da revisão" />
-          <Button disabled={!data.canClassifyHistoricalReservations || !value.turn || value.reason.trim().length < 3 || busyKey !== ''} onClick={() => void classifyReservation(issue)} className="uppercase">{data.canClassifyHistoricalReservations ? 'Classificar' : 'Somente o dono'}</Button>
+          <Button disabled={!data.canClassifyHistoricalReservations || !value.turn || value.reason.trim().length < 3 || busyKey !== ''} onClick={() => void classifyReservation(issue)} className="uppercase">{data.canClassifyHistoricalReservations ? 'Classificar' : 'Somente administradores'}</Button>
         </div>;
       })}
     </section>}

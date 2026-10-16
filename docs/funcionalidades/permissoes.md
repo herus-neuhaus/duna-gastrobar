@@ -9,25 +9,55 @@
 5. **RPCs/triggers/constraints** validam transições, concorrência e regras críticas no banco.
 6. **Admin client/service role** contorna RLS; só deve ser utilizado no servidor após verificação explícita da permissão e validação dos dados.
 
-## Papéis vistos no código
+## Regra atual: dois níveis de acesso
+
+Administrador pode acessar todas as áreas e ações, sempre respeitando validação,
+auditoria e regras de integridade. Funcionário fica em reservas, operação do dia,
+criação de reservas e checklist. Não vê configuração do estabelecimento,
+financeiro completo, gestão de equipe, cadastros ou produtividade da equipe.
+
+O cadastro detalhado de papéis fica para uma etapa posterior. `lib/permissoes.ts`
+centraliza a matriz para menus, rotas e helpers de servidor. A migração
+`20261016041810_alinhar_acessos_administrador_operacao.sql`, aplicada no Supabase
+remoto com autorização, alinha RLS e RPCs à mesma regra. Contas
+antigas não são promovidas automaticamente.
+
+O deploy do frontend/servidor é separado da migração: enquanto o código antigo
+estiver publicado, menus e handlers antigos ainda podem ter a matriz anterior.
+
+## Compatibilidade dos cargos existentes
 
 | Papel | Acesso de rota / helper observado |
 |---|---|
-| `admin` | `/admin`; `isAdmin()`; equipe do painel. Gestão de recursos e criação de funcionário em endpoints que verificam admin. |
-| `dono` | `/admin`; `isPanelStaff()`, `isReservationOwner()`, `isFinanceStaff()`; único papel aceito pelo helper `isReservationOwner`. |
-| `gerente` | `/admin`; painel e financeiro (`isFinanceStaff`); não é dono para ações que verificam `isReservationOwner()`. |
-| `receptionist`, `portaria` | `/admin` e equipe do painel (`isPanelStaff`); podem consultar e alterar reservas e lista de espera pelos handlers operacionais, conforme regra de negócio confirmada pelo responsável. Não são `admin`; acesso direto às tabelas continua sujeito a RLS. |
-| `employee` | `/funcionario/checklist`; é redirecionado do admin para checklist. |
+| `admin` | Administrador com acesso completo, inclusive estabelecimento, financeiro, permissões e exceções auditadas. |
+| `dono` | Alias legado de Administrador, sem perder acessos existentes. |
+| `gerente`, `receptionist`, `portaria` | Funcionários operacionais; não recebem gestão ou financeiro apenas por esses nomes antigos. |
+| `employee` | Funcionário com operação e checklist, sem áreas administrativas. |
 
-`isAdmin()` valida apenas `admin`; `dono`/`gerente` não são aliases automáticos. Portanto conferir cada handler: nomes semelhantes de interface não determinam privilégio.
+`isAdmin()`, `isFinanceStaff()` e o helper legado `isReservationOwner()` aceitam
+`admin` e `dono`. `isPanelStaff()` inclui todos os cargos internos, mas nenhum
+helper libera ações enquanto há troca obrigatória de senha. O banco usa o cargo
+em `profiles`, nunca `user_metadata` editável pelo próprio usuário.
+
+Alterações de nível ficam em `alteracoes_cargos`. Não é permitido alterar o
+próprio acesso nem remover/desativar o último administrador pelo fluxo da API.
+
+Validação local (executar as suítes de banco sequencialmente):
+
+```sh
+npm run db:apply:acessos
+npm run test:db:acessos
+npm run test:db:estabelecimento
+npm run test:db
+```
 
 ## Endpoints com controles explicitamente observados
 
-- Financeiro: `GET /api/admin/finance` exige `isFinanceStaff()` (dono/gerente).
-- Áreas/mesas e decoração administrativa: cada método de `/api/admin/restaurant` e `/api/admin/decorations` exige `isAdmin()`.
-- Criação de funcionário: `POST /api/admin/employees` exige `isAdmin()` e allowlist de cargos (`admin`, `employee`, `receptionist`); cargo operacional só pode ser atribuído a `employee`.
-- Permissões excepcionais de capacidade: GET/POST em `/api/admin/capacity-permissions` exigem `isReservationOwner()` (dono); a gravação usa RPC com sessão e nova validação no banco.
-- Operação e atribuição de mesas: GET/POST em `/api/admin/operations` e GET/PUT de `/api/admin/reservations/:id/tables` exigem `isPanelStaff()`; classificação histórica exige adicionalmente dono. Walk-in/classificação usam RPC com sessão.
+- Financeiro: `GET /api/admin/finance` exige Administrador. A leitura direta de `reservation_payments` também é administrativa; informações de cobrança necessárias ao atendimento permanecem na reserva operacional.
+- Áreas/mesas: `/api/admin/restaurant` exige Administrador. Em decorações, a consulta aceita equipe para criar reservas; inclusão, alteração e exclusão exigem Administrador.
+- Criação de funcionário: `POST /api/admin/employees` exige `isAdmin()` e allowlist de cargos (`admin`, `employee`); cargo operacional só pode ser atribuído a `employee`.
+- Permissões excepcionais de capacidade: GET/POST em `/api/admin/capacity-permissions` exigem Administrador; a gravação usa RPC com sessão e nova validação no banco. Funcionários só recebem exceção de capacidade mediante concessão explícita e auditada, nunca por padrão.
+- Operação e atribuição de mesas: GET/POST em `/api/admin/operations` e GET/PUT de `/api/admin/reservations/:id/tables` exigem `isPanelStaff()`; classificação histórica exige Administrador. Walk-in/classificação usam RPC com sessão.
 - Reserva do cliente: GET usa token bearer comparado por hash no RPC; PATCH permite token para cancelamento/edição pública e exige equipe para demais ações. Exceções de agenda/capacidade têm validações adicionais no banco.
 - Troca de senha: `POST /api/account/password` exige usuário autenticado e atualiza o perfil pelo ID dessa sessão.
 
@@ -37,13 +67,13 @@
 
 | Handler / método | Barreira observada antes da operação privilegiada | Uso privilegiado e observação |
 |---|---|---|
-| `/api/admin/finance` GET | `isFinanceStaff()` (dono/gerente). | Consulta pagamentos e reservas. |
-| `/api/admin/capacity-permissions` GET | `isReservationOwner()` (dono). | Consulta perfis, permissões e auditorias; POST usa RPC com cliente de sessão, não grava com service role. |
-| `/api/admin/operations` GET/POST | `isPanelStaff()`; classificar reserva histórica também exige dono. | Consulta operação e altera fila com service role; walk-in/classificação chamam RPC com sessão. No walk-in, atribuição de mesas usa service role após o guard de equipe. |
+| `/api/admin/finance` GET | `isFinanceStaff()` (Administrador). | Consulta pagamentos e reservas. |
+| `/api/admin/capacity-permissions` GET | `isReservationOwner()` (Administrador, nome legado). | Consulta perfis, permissões e auditorias; POST usa RPC com cliente de sessão, não grava com service role. |
+| `/api/admin/operations` GET/POST | `isPanelStaff()`; classificar reserva histórica também exige Administrador. | Consulta operação e altera fila com service role; walk-in/classificação chamam RPC com sessão. No walk-in, atribuição de mesas usa service role após o guard de equipe. |
 | `/api/admin/reservations/:id/tables` GET/PUT | `isPanelStaff()`. | Consulta e substitui atribuições via RPC privilegiado; a regra final fica na função SQL. |
 | `/api/admin/restaurant` GET/POST/PATCH | `isAdmin()` em cada método. | Leitura e cadastro/ativação de áreas e mesas. |
 | `/api/admin/employees` POST | `isAdmin()` antes de criar usuário; allowlist de papel/cargo. | Supabase Auth Admin e upsert do perfil. |
-| `/api/admin/decorations` GET/POST/PATCH/DELETE | `isAdmin()` em cada método. | CRUD de metadados e Storage; upload valida tipo e tamanho. |
+| `/api/admin/decorations` GET/POST/PATCH/DELETE | GET: `isPanelStaff()`; mutações: `isAdmin()`. | CRUD de metadados e Storage; upload valida tipo e tamanho. |
 | `/api/account/password` POST | `auth.getUser()`; perfil alterado apenas no `user.id` autenticado, após troca da senha. | Usa service role apenas para limpar `force_password_change`. |
 | `/api/reservations` POST | Criação pública por desenho; valida payload e regras. `isPanelStaff()` só autoriza janela estendida; exceções exigem painel e passam por RPC com sessão/banco. | Caminho público insere reserva com service role; não confundir ausência de login do cliente com ausência de validação de domínio. |
 | `/api/reservations/availability` GET | Público; intervalo e horizonte limitados, resposta de disponibilidade. | Consulta RPC e datas por service role; dados retornados são disponibilidade pública. |

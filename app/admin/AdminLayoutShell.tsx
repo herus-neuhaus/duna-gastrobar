@@ -23,15 +23,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ForcePasswordChangeModal from '@/app/components/ForcePasswordChangeModal';
 import { Button } from '@/components/ui/button';
+import { ehEquipeOperacional, podeAcessarVisao } from '@/lib/permissoes';
+import { ContextoAcesso } from '@/app/components/ContextoAcesso';
 
 const navigationGroups = [
   {
-    label: 'Atendimento',
+    label: 'Operação',
     items: [
       { key: 'reservations', label: 'Reservas', href: '/admin?view=reservations', icon: CalendarIcon },
       { key: 'operations', label: 'Operação do dia', href: '/admin?view=operations', icon: CalendarDays },
       { key: 'restaurant', label: 'Áreas e mesas', href: '/admin?view=restaurant', icon: TableProperties },
       { key: 'new_reservation', label: 'Criar reserva', href: '/admin?view=new_reservation', icon: CalendarPlus },
+      { key: 'checklist', label: 'Meu checklist', href: '/funcionario/checklist', icon: CalendarDays },
     ],
   },
   {
@@ -90,6 +93,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
   useEffect(() => {
     const checkAuth = async () => {
       setAuthError('');
+      setIsAuthorized(false);
       try {
         const { data: { user }, error } = await supabase.auth.getUser();
         if (error) throw error;
@@ -109,13 +113,13 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
         if (profileError) throw profileError;
         setUserRole(profile.role);
 
-        if (activeItem === 'estabelecimento' && profile.role !== 'dono') {
-          router.replace('/admin?view=reservations');
+        if (!ehEquipeOperacional(profile.role)) {
+          router.replace('/login');
           return;
         }
 
-        if (activeItem === 'finance' && !['dono', 'gerente'].includes(profile.role || '')) {
-          router.replace('/admin?view=reservations');
+        if (!podeAcessarVisao(profile.role, activeItem)) {
+          router.replace('/admin?view=operations');
           return;
         }
         
@@ -137,7 +141,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
     router.push('/login');
   };
 
-  if (!isAuthorized) {
+  if (!isAuthorized || !podeAcessarVisao(userRole, activeItem)) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-[#4A3728]">
         <div className="flex flex-col items-center gap-4">
@@ -223,7 +227,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
 
         <nav aria-label="Navegação do painel" className="flex-1 space-y-6 px-4">
           {navigationGroups.map((group) => {
-            const items = group.items.filter((item) => (item.key !== 'finance' || ['dono', 'gerente'].includes(userRole || '')) && (item.key !== 'estabelecimento' || userRole === 'dono'));
+            const items = group.items.filter((item) => podeAcessarVisao(userRole, item.key));
             if (items.length === 0) return null;
             const isExpanded = expandedGroups[group.label] ?? false;
             const groupId = `admin-nav-${group.label.toLowerCase().replace(/\s+/g, '-')}`;
@@ -274,7 +278,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
 
       {/* Main Content */}
       <main className="flex-1 flex min-h-screen flex-col overflow-x-hidden overflow-y-auto pt-16 lg:h-screen lg:min-h-0 lg:pt-0 bg-[#FDFBF7]">
-        {children}
+        <ContextoAcesso.Provider value={userRole}>{children}</ContextoAcesso.Provider>
       </main>
     </div>
   );

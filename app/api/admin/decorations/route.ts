@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { isAdmin } from '@/lib/auth';
+import { isAdmin, isPanelStaff } from '@/lib/auth';
 
 const BUCKET = 'decorations';
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -11,7 +11,8 @@ const ALLOWED_IMAGE_TYPES = new Map([
 ]);
 
 export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
+  // A equipe usa a lista para criar reservas; manutenção continua administrativa.
+  if (!(await isPanelStaff())) return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
 
   try {
     const { data, error } = await createAdminClient()

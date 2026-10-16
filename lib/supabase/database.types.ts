@@ -4,6 +4,40 @@ export type Json = string | number | boolean | null | {
 export type Database = {
     "public": {
         Tables: {
+            "alteracoes_cargos": {
+                Row: {
+                    "autor_id": string | null;
+                    "cargo_anterior": string | null;
+                    "cargo_novo": string | null;
+                    "criado_em": string;
+                    "id": string;
+                    "motivo": string;
+                    "origem": string;
+                    "perfil_id": string;
+                };
+                Insert: {
+                    "autor_id"?: string | null;
+                    "cargo_anterior"?: string | null;
+                    "cargo_novo"?: string | null;
+                    "criado_em"?: string;
+                    "id"?: string;
+                    "motivo": string;
+                    "origem": string;
+                    "perfil_id": string;
+                };
+                Update: {
+                    "autor_id"?: string | null;
+                    "cargo_anterior"?: string | null;
+                    "cargo_novo"?: string | null;
+                    "criado_em"?: string;
+                    "id"?: string;
+                    "motivo"?: string;
+                    "origem"?: string;
+                    "perfil_id"?: string;
+                };
+                Relationships: [
+                ];
+            };
             "alteracoes_funcionamento": {
                 Row: {
                     "autor_id": string;

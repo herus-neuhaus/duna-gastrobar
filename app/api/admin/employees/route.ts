@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { isAdmin } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-const ALLOWED_ROLES = new Set(['admin', 'employee', 'receptionist']);
+const ALLOWED_ROLES = new Set(['admin', 'employee']);
 
 export async function POST(request: Request) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });

@@ -3,19 +3,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   createAdminClient: vi.fn(),
   isAdmin: vi.fn(),
+  isPanelStaff: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ isAdmin: mocks.isAdmin }));
+vi.mock('@/lib/auth', () => ({ isAdmin: mocks.isAdmin, isPanelStaff: mocks.isPanelStaff }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: mocks.createAdminClient }));
 
 import { POST as createRestaurantResource } from '@/app/api/admin/restaurant/route';
-import { DELETE as deleteDecoration } from '@/app/api/admin/decorations/route';
+import { DELETE as deleteDecoration, GET as listDecorations } from '@/app/api/admin/decorations/route';
 
 describe('admin resource routes', () => {
   beforeEach(() => {
     mocks.createAdminClient.mockReset();
     mocks.isAdmin.mockReset();
     mocks.isAdmin.mockResolvedValue(true);
+    mocks.isPanelStaff.mockReset();
+    mocks.isPanelStaff.mockResolvedValue(true);
+  });
+
+  it('lets operational staff list decorations without allowing maintenance', async () => {
+    mocks.isAdmin.mockResolvedValue(false);
+    mocks.createAdminClient.mockReturnValue({ from: () => ({ select: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }) });
+    expect((await listDecorations()).status).toBe(200);
+    expect((await deleteDecoration(new Request('http://localhost/api/admin/decorations?id=dec-1'))).status).toBe(401);
   });
 
   it('rejects a table assigned to an inactive area', async () => {

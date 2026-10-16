@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { CARGOS_ADMINISTRATIVOS, CARGOS_PAINEL } from '@/lib/permissoes';
 
 export const ADMIN_ROLE = 'admin';
 export const EMPLOYEE_ROLE = 'employee';
@@ -6,19 +7,21 @@ export const RECEPTIONIST_ROLE = 'receptionist';
 export const OWNER_ROLE = 'dono';
 
 export async function isAdmin() {
-  return hasRole([ADMIN_ROLE]);
+  return hasRole(CARGOS_ADMINISTRATIVOS);
 }
 
 export async function isPanelStaff() {
-  return hasRole([ADMIN_ROLE, OWNER_ROLE, 'gerente', RECEPTIONIST_ROLE, 'portaria']);
+  return hasRole(CARGOS_PAINEL);
 }
 
 export async function isReservationOwner() {
-  return hasRole([OWNER_ROLE]);
+  // Compatibilidade com handlers antigos: ações antes exclusivas do dono agora
+  // pertencem ao nível Administrador, também validado pelas RPCs no banco.
+  return hasRole(CARGOS_ADMINISTRATIVOS);
 }
 
 export async function isFinanceStaff() {
-  return hasRole([OWNER_ROLE, 'gerente']);
+  return hasRole(CARGOS_ADMINISTRATIVOS);
 }
 
 export async function canOverrideReservationCapacity() {
@@ -33,7 +36,7 @@ export async function isReservationAdminOrOwner() {
   return !error && data === true;
 }
 
-async function hasRole(allowedRoles: string[]) {
+async function hasRole(allowedRoles: readonly string[]) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;

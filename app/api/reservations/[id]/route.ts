@@ -147,7 +147,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (message.includes('CAPACITY_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Você não tem permissão para exceder a capacidade.' }, { status: 403 });
     if (message.includes('CAPACITY_OVERRIDE_NOT_NEEDED')) return NextResponse.json({ error: 'A nova operação não precisa de uma exceção de capacidade.' }, { status: 400 });
-    if (message.includes('SCHEDULE_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Somente administradores ou o dono podem autorizar horário fora da agenda.' }, { status: 403 });
+    if (message.includes('SCHEDULE_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Somente administradores podem autorizar horário fora da agenda.' }, { status: 403 });
     if (message.includes('SCHEDULE_OVERRIDE_NOT_NEEDED')) return NextResponse.json({ error: 'O horário escolhido está dentro da agenda; não precisa de exceção.' }, { status: 400 });
     return NextResponse.json({ error: 'Não foi possível atualizar a reserva.' }, { status: 500 });
   }

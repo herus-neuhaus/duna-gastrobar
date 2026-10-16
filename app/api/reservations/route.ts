@@ -244,9 +244,9 @@ export async function POST(request: Request) {
     if (errorMessage.includes('CAPACITY_EXCEEDED')) {
       return NextResponse.json({ error: 'A capacidade para este turno foi atingida.', code: 'CAPACITY_EXCEEDED' }, { status: 409 });
     }
-    if (errorMessage.includes('OWNER_REQUIRED')) return NextResponse.json({ error: 'Somente o dono pode autorizar esta exceção.' }, { status: 403 });
+    if (errorMessage.includes('OWNER_REQUIRED')) return NextResponse.json({ error: 'Somente administradores podem autorizar esta exceção.' }, { status: 403 });
     if (errorMessage.includes('CAPACITY_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Você não tem permissão para exceder a capacidade.' }, { status: 403 });
-    if (errorMessage.includes('SCHEDULE_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Somente administradores ou o dono podem autorizar horário fora da agenda.' }, { status: 403 });
+    if (errorMessage.includes('SCHEDULE_OVERRIDE_NOT_AUTHORIZED')) return NextResponse.json({ error: 'Somente administradores podem autorizar horário fora da agenda.' }, { status: 403 });
     if (errorMessage.includes('RESERVATION_TURN_CLASSIFICATION_REQUIRED')) return NextResponse.json({ error: 'A data possui reservas históricas que precisam ser classificadas antes de novas reservas.' }, { status: 409 });
     if (errorMessage.includes('ACTIVE_RESERVATION_EXISTS')) {
       return NextResponse.json({ error: 'Já existe uma reserva ativa para este WhatsApp nesta data.' }, { status: 409 });

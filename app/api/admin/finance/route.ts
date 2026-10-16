@@ -51,7 +51,7 @@ async function loadPayments(
 
 export async function GET(request: Request) {
   if (!(await isFinanceStaff())) {
-    return NextResponse.json({ error: 'Acesso restrito a dono e gerente.' }, { status: 403 });
+    return NextResponse.json({ error: 'Acesso restrito a administradores.' }, { status: 403 });
   }
 
   const params = new URL(request.url).searchParams;

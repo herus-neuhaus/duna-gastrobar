@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '@/lib/supabase/database.types';
+import { useAcessoAdministrativo } from '@/app/components/ContextoAcesso';
 
 type Template = Database['public']['Tables']['whatsapp_templates']['Row'];
 
@@ -26,6 +27,7 @@ interface WhatsAppModalProps {
 }
 
 export default function WhatsAppModal({ isOpen, onClose, customerName, customerPhone }: WhatsAppModalProps) {
+  const acessoAdministrativo = useAcessoAdministrativo();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -59,6 +61,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
   }, [isOpen, fetchTemplates]);
 
   const handleSave = async () => {
+    if (!acessoAdministrativo) return;
     if (!currentTemplate?.title || !currentTemplate?.content) return;
 
     const { error } = currentTemplate.id 
@@ -80,6 +83,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
   };
 
   const handleDeleteClick = (id: string) => {
+    if (!acessoAdministrativo) return;
     // Optimistic UI: remove from list
     const originalTemplates = [...templates];
     setTemplates(templates.filter(t => t.id !== id));
@@ -203,7 +207,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
                     >
                       <div className="flex justify-between items-start mb-2">
                         <h3 className="font-bold text-sm text-[#4A3728]">{template.title}</h3>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {acessoAdministrativo && <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={() => { setCurrentTemplate(template); setIsEditing(true); }}
                             className="p-1.5 text-[#4A3728]/40 hover:text-[#4A3728] hover:bg-[#F5F2ED] rounded-lg transition-colors"
@@ -216,7 +220,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
                           >
                             <Trash2 size={14} />
                           </button>
-                        </div>
+                        </div>}
                       </div>
                       <p className="text-xs text-[#4A3728]/60 line-clamp-2 pr-10">{template.content.replace(/{{nome}}/g, customerName)}</p>
                       
@@ -231,7 +235,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
                 </div>
               )}
 
-              <button 
+              {acessoAdministrativo && <button
                 onClick={() => { setCurrentTemplate({}); setIsEditing(true); }}
                 className="w-full py-4 border-2 border-dashed border-[#D9CFC1] rounded-[24px] text-[#4A3728]/40 hover:text-[#4A3728] hover:border-[#4A3728]/40 hover:bg-white transition-all flex items-center justify-center gap-2 group"
               >
@@ -239,7 +243,7 @@ export default function WhatsAppModal({ isOpen, onClose, customerName, customerP
                   <Plus size={16} />
                 </div>
                 <span className="text-xs font-bold uppercase tracking-widest">Novo Template</span>
-              </button>
+              </button>}
             </>
           )}
         </div>
