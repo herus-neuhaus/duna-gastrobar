@@ -32,10 +32,22 @@ mesmo funcionamento efetivo. A reserva pública, criação interna e operação 
 dia usam as RPCs existentes. O site busca o horário publicado pela API; o painel
 oferece horários da agenda também para datas além do limite público de dez dias.
 
-O salvamento é serializado com criação/reagendamento e faz rollback se invalidar
-reservas futuras ou mudar a identidade de um período de decoração em uso. Não
-cancela, reclassifica ou reagenda clientes automaticamente. Exceções de horário
-autorizadas continuam seguindo seu fluxo próprio e auditado.
+O salvamento é serializado com criação/reagendamento. Fechar um dia bloqueia
+novas reservas, mas preserva as já cadastradas com seu contexto original,
+inclusive mesas e decorações. Elas continuam podendo ser confirmadas, atendidas
+e canceladas; alterações no mesmo horário não dependem da reabertura da agenda.
+Reagendar para outro horário fechado continua proibido.
+
+Essa preservação foi adicionada em
+`supabase/migrations/20261016043427_preservar_reservas_em_dias_fechados.sql`.
+O calendário público consulta a disponibilidade do banco para desabilitar dias
+sem horários, em vez de fixar dias da semana diretamente no frontend.
+
+Alterações de horário em dias abertos ainda fazem rollback se invalidarem uma
+reserva ou mudarem a identidade de um período de decoração em uso. Reservas sem
+contexto original suficiente continuam exigindo revisão, em vez de inferência
+silenciosa. Não cancela, reclassifica ou reagenda clientes automaticamente.
+Exceções autorizadas continuam seguindo seu fluxo próprio e auditado.
 
 As reservas guardam permanência/preparação aplicadas e o vínculo com o período.
 Editar a configuração não muda sua janela histórica de ocupação de mesas.

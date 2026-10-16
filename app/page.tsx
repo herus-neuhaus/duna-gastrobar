@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
-import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } from 'date-fns';
+import { format, parse, isAfter, addHours, differenceInHours, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { isValidCpf } from '@/lib/cpf';
 import { buildDuplicateReservationMessage, type DuplicateReservationChoice } from '@/lib/reservation-duplicate-message';
@@ -55,6 +55,7 @@ export default function DunaGastrobarReservation() {
   const [allSpecialDates, setAllSpecialDates] = useState<any[]>([]);
   const [allBlockedDates, setAllBlockedDates] = useState<any[]>([]);
   const [availableTimesByDate, setAvailableTimesByDate] = useState<Record<string, string[]>>({});
+  const [loadingAvailability, setLoadingAvailability] = useState(true);
   const [timeTurnsByDate, setTimeTurnsByDate] = useState<Record<string, Record<string, string>>>({});
   const [turnTotals, setTurnTotals] = useState<Record<string, number>>({});
   const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
@@ -125,10 +126,8 @@ export default function DunaGastrobarReservation() {
     const today = new Date();
     for (let i = 0; i <= 10; i++) {
       const d = addDays(today, i);
-      const dayOfWeek = getDay(d); // 0 = Domingo, 1 = Segunda, ...
-      if (dayOfWeek !== 1) {
-        dates.push(d);
-      }
+      // A agenda do banco decide os dias disponíveis, sem dias fixos no código.
+      dates.push(d);
     }
     return dates;
   };
@@ -199,6 +198,7 @@ export default function DunaGastrobarReservation() {
   };
 
   const fetchFullDates = useCallback(async () => {
+    setLoadingAvailability(true);
     const firstDate = format(datesList[0], 'yyyy-MM-dd');
     const lastDate = format(datesList[datesList.length - 1], 'yyyy-MM-dd');
     try {
@@ -219,6 +219,8 @@ export default function DunaGastrobarReservation() {
       setAvailableTimesByDate({});
       setTimeTurnsByDate({});
       setTurnTotals({});
+    } finally {
+      setLoadingAvailability(false);
     }
   }, [datesList]);
 
@@ -850,12 +852,15 @@ export default function DunaGastrobarReservation() {
                         {datesList.map((dObj) => {
                           const dateValue = format(dObj, 'yyyy-MM-dd');
                           const isFull = fullyBookedDates.includes(dateValue);
+                          const isBlocked = allBlockedDates.some((item) => item.date === dateValue);
+                          const hasNoTimes = !(availableTimesByDate[dateValue]?.length);
+                          const disabled = loadingAvailability || isFull || isBlocked || hasNoTimes;
                           const displayLabel = formatDisplayDate(dObj);
                           
                           return (
                             <button
                               key={dateValue}
-                              disabled={isFull}
+                              disabled={disabled}
                               onClick={() => {
                                 setDate(dateValue);
                                 fetchCapacity(dateValue);
@@ -866,7 +871,7 @@ export default function DunaGastrobarReservation() {
                               }}
                               className={`w-full text-left px-5 py-3 hover:bg-[#F5F2ED] transition-colors flex items-center justify-between font-medium ${
                                 date === dateValue ? 'bg-[#F5F2ED] font-bold text-[#4A3728]' : 'text-[#4A3728]/80'
-                              } ${isFull ? 'opacity-30 cursor-not-allowed' : ''}`}
+                              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
                             >
                               <div className="flex flex-col items-start gap-1">
                                 <span className="text-xs">{displayLabel}</span>
@@ -875,6 +880,7 @@ export default function DunaGastrobarReservation() {
                                 ))}
                               </div>
                               {isFull && <span className="text-[9px] font-bold text-red-600 uppercase">Lotado</span>}
+                              {!isFull && disabled && <span className="text-[9px] font-bold text-[#4A3728]/65 uppercase">{loadingAvailability ? 'Carregando' : isBlocked ? 'Bloqueado' : 'Sem horários'}</span>}
                             </button>
                           );
                         })}

@@ -14,6 +14,7 @@ try {
   const migrations = readdirSync(new URL('../supabase/migrations/', import.meta.url));
   const nomes = ['require_cpf_optional_email', 'configuracoes_estabelecimento'];
   if (process.argv.includes('--acessos')) nomes.push('alinhar_acessos_administrador_operacao');
+  nomes.push('preservar_reservas_em_dias_fechados');
   for (const nome of nomes) {
     const arquivos = migrations.filter((arquivo) => arquivo.endsWith(`_${nome}.sql`));
     assert.equal(arquivos.length, 1, `Migração única esperada para ${nome}`);

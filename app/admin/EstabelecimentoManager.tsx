@@ -140,13 +140,13 @@ export default function EstabelecimentoManager() {
       <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
         <div><h3 className="font-bold">{dia.data_excecao ? dia.data_excecao.split('-').reverse().join('/') : DIAS_SEMANA[dia.dia_semana!]}</h3>
           {aba !== 'reservas' && <label className="mt-2 flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={!dia.fechado} onChange={(event) => {
-            if (!event.target.checked && dia.reservas.length && !window.confirm('Fechar este dia também remove suas janelas semanais de reserva. Continuar?')) return;
+            if (!event.target.checked && !window.confirm('Fechar este dia bloqueará novas reservas. As reservas já cadastradas serão mantidas e deverão ser atendidas normalmente. Continuar?')) return;
             editarDia(indice, { fechado: !event.target.checked, periodos: event.target.checked ? [periodoInicial()] : [], reservas: event.target.checked ? dia.reservas : [] });
           }} />{dia.fechado ? 'Fechado' : 'Aberto'}</label>}
           {aba === 'reservas' && <p className="mt-2 text-xs text-[#4A3728]/60">{dia.fechado ? 'Estabelecimento fechado' : dia.periodos.map((periodo) => `${periodo.abre_as}–${periodo.fecha_as}${periodo.encerra_dia_seguinte ? ' (+1 dia)' : ''}`).join(' / ')}</p>}
           {dia.data_excecao && <Button type="button" variant="danger" size="sm" className="mt-2" onClick={() => editar((atual) => ({ ...atual, dias: atual.dias.filter((_, i) => i !== indice) }))}><Trash2 size={14} /> Usar padrão semanal</Button>}
         </div>
-        {aba !== 'reservas' ? (dia.fechado ? <p className="self-center text-sm text-[#4A3728]/55">Sem atendimento neste dia.</p> : renderizarPeriodos(dia, indice)) : <div className="space-y-3">
+        {aba !== 'reservas' ? (dia.fechado ? <p className="self-center text-sm text-[#4A3728]/55">Fechado para novas reservas. Reservas já cadastradas continuam válidas.</p> : renderizarPeriodos(dia, indice)) : <div className="space-y-3">
           {dia.reservas.map((janela, numero) => <fieldset key={numero} className="rounded-xl border border-[#D9CFC1]/70 bg-[#FDFBF7] p-3">
             <legend className="px-1 text-xs font-bold">Janela {numero + 1}</legend>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -167,7 +167,7 @@ export default function EstabelecimentoManager() {
 
     <Card className="space-y-4 p-5">
       <div><h3 className="text-sm font-bold">Como aparece no site</h3>{resumirFuncionamento(configuracao.dias).map((texto) => <p key={texto} className="mt-1 text-sm text-[#4A3728]/70">{texto}</p>)}{!resumirFuncionamento(configuracao.dias).length && <p className="mt-1 text-sm">Fechado em todos os dias da semana.</p>}</div>
-      <p className="text-xs text-[#4A3728]/60">A madrugada é suportada no funcionamento. Janelas de reserva continuam dentro da mesma data civil. Reservas existentes não são canceladas nem reclassificadas automaticamente.</p>
+      <p className="text-xs text-[#4A3728]/60">A madrugada é suportada no funcionamento. Janelas de reserva continuam dentro da mesma data civil. Fechar um dia bloqueia novas reservas, mas mantém as já cadastradas, com seus horários, mesas e decorações.</p>
     </Card>
     <div className="sticky bottom-0 z-10 space-y-3 rounded-2xl border border-[#D9CFC1] bg-[#FDFBF7] p-4 shadow-lg" aria-live="polite">
       {erro && <Feedback tone="error">{erro}</Feedback>}{sucesso && <Feedback tone="success">{sucesso}</Feedback>}

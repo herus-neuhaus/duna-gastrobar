@@ -383,7 +383,9 @@ export default function OperationsDashboard() {
     <section className="grid gap-3 sm:grid-cols-2">
       {(['lunch', 'dinner'] as const).map((turn) => {
         const slot = capacityByTurn.get(turn);
-        const occupied = slot?.occupied_guests || 0;
+        const occupied = slot?.occupied_guests ?? reservations
+          .filter((item) => item.commercial_turn === turn && item.source !== 'walk_in' && !['cancelled', 'cancelado'].includes(item.status.toLowerCase()))
+          .reduce((sum, item) => sum + item.num_guests, 0);
         const full = slot?.has_unclassified_reservation || occupied >= 80;
         return <div key={turn} className="rounded-2xl border border-[#D9CFC1] bg-white p-5">
           <div className="flex items-center justify-between">
@@ -394,6 +396,7 @@ export default function OperationsDashboard() {
             <div className={`h-full ${full ? 'bg-red-600' : 'bg-[#4A3728]'}`} style={{ width: `${Math.min(100, occupied / 80 * 100)}%` }} />
           </div>
           {slot?.has_unclassified_reservation && <p className="mt-2 text-xs font-bold text-red-700">Há reserva histórica sem turno classificado.</p>}
+          {!slot && occupied > 0 && <p className="mt-2 text-xs text-[#4A3728]/65">Reservas existentes mantidas. Sem novos horários disponíveis neste turno.</p>}
         </div>;
       })}
     </section>
