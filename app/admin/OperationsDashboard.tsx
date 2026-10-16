@@ -383,7 +383,9 @@ export default function OperationsDashboard() {
     <section className="grid gap-3 sm:grid-cols-2">
       {(['lunch', 'dinner'] as const).map((turn) => {
         const slot = capacityByTurn.get(turn);
-        const occupied = slot?.occupied_guests || 0;
+        const occupied = slot?.occupied_guests ?? reservations
+          .filter((item) => item.commercial_turn === turn && item.source !== 'walk_in' && !['cancelled', 'cancelado'].includes(item.status.toLowerCase()))
+          .reduce((sum, item) => sum + item.num_guests, 0);
         const full = slot?.has_unclassified_reservation || occupied >= 80;
         return <div key={turn} className="rounded-2xl border border-[#D9CFC1] bg-white p-5">
           <div className="flex items-center justify-between">
@@ -394,6 +396,7 @@ export default function OperationsDashboard() {
             <div className={`h-full ${full ? 'bg-red-600' : 'bg-[#4A3728]'}`} style={{ width: `${Math.min(100, occupied / 80 * 100)}%` }} />
           </div>
           {slot?.has_unclassified_reservation && <p className="mt-2 text-xs font-bold text-red-700">Há reserva histórica sem turno classificado.</p>}
+          {!slot && occupied > 0 && <p className="mt-2 text-xs text-[#4A3728]/65">Reservas existentes mantidas. Sem novos horários disponíveis neste turno.</p>}
         </div>;
       })}
     </section>
@@ -500,14 +503,14 @@ export default function OperationsDashboard() {
 
     {data.classificationIssues.length > 0 && <section className="rounded-3xl border border-[#D9CFC1] bg-white">
       <header className="border-b border-[#D9CFC1] p-5 font-bold">Reservas sem turno classificado ({data.classificationIssues.length})</header>
-      <p className="px-5 pt-4 text-xs text-[#4A3728]/60">A classificação exige revisão do dono. Escolha o turno confirmado pela equipe e registre o motivo.</p>
+      <p className="px-5 pt-4 text-xs text-[#4A3728]/60">A classificação exige revisão de um administrador. Escolha o turno confirmado pela equipe e registre o motivo.</p>
       {data.classificationIssues.map((issue) => {
         const value = classifications[issue.id] || { turn: '', reason: '' };
         return <div key={issue.id} className="grid gap-3 border-b border-[#D9CFC1]/50 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <div><p className="font-bold">{formatDate(issue.reservation_date)}</p><p className="mt-1 text-xs text-[#4A3728]/60">{issue.reservation_time.slice(0, 5)} · {issue.num_guests} pessoas · {statusLabel(issue.status)}</p></div>
           <Select disabled={!data.canClassifyHistoricalReservations} value={value.turn} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, turn: event.target.value } }))}><option value="">Selecione o turno</option><option value="lunch">Almoço</option><option value="dinner">Jantar</option></Select>
           <Input disabled={!data.canClassifyHistoricalReservations} value={value.reason} onChange={(event) => setClassifications((current) => ({ ...current, [issue.id]: { ...value, reason: event.target.value } }))} maxLength={1000} placeholder="Motivo da revisão" />
-          <Button disabled={!data.canClassifyHistoricalReservations || !value.turn || value.reason.trim().length < 3 || busyKey !== ''} onClick={() => void classifyReservation(issue)} className="uppercase">{data.canClassifyHistoricalReservations ? 'Classificar' : 'Somente o dono'}</Button>
+          <Button disabled={!data.canClassifyHistoricalReservations || !value.turn || value.reason.trim().length < 3 || busyKey !== ''} onClick={() => void classifyReservation(issue)} className="uppercase">{data.canClassifyHistoricalReservations ? 'Classificar' : 'Somente administradores'}</Button>
         </div>;
       })}
     </section>}

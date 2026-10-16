@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input, Select } from '@/components/ui/form-controls';
+import { ehAdministrador, ehEquipeOperacional } from '@/lib/permissoes';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Role = Database['public']['Tables']['employee_roles']['Row'];
@@ -214,7 +215,7 @@ export default function FuncionariosManager() {
       {capacityProfiles.length > 0 && <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
         <div className="mb-5">
           <h3 className="font-bold text-lg text-amber-950">Permissão para exceder capacidade</h3>
-          <p className="mt-1 text-xs text-amber-900/75">Somente o dono concede ou revoga. Cada uso ainda exige ação explícita e motivo; isso não autoriza horário fora da agenda.</p>
+          <p className="mt-1 text-xs text-amber-900/75">Administradores concedem ou revogam. Cada uso ainda exige ação explícita e motivo; isso não autoriza horário fora da agenda.</p>
         </div>
         <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_auto]">
           <Select value={capacityTarget} onChange={(event) => setCapacityTarget(event.target.value)} className="border-amber-200">
@@ -348,15 +349,15 @@ export default function FuncionariosManager() {
                 <div className="w-full md:w-auto">
                   <label className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60 md:hidden mb-1 block">Nível de Acesso</label>
                   <Select
-                    value={profile.role || ''}
+                    value={ehAdministrador(profile.role) ? 'admin' : ehEquipeOperacional(profile.role) ? 'employee' : profile.role || ''}
                     onChange={(e) => handleUpdateProfile(profile.id, { role: e.target.value || null })}
-                    disabled={updating === profile.id}
+                    disabled={updating === profile.id || profile.id === currentUserId}
                     className="md:w-40"
                   >
                     <option value="">(Sem acesso)</option>
                     <option value="admin">Administrador</option>
-                    <option value="receptionist">Recepcionista</option>
-                    <option value="employee">Funcionário</option>
+                    <option value="employee">Funcionário (operação)</option>
+                    {profile.role === 'customer' && <option value="customer">Cliente</option>}
                   </Select>
                 </div>
 
@@ -366,7 +367,7 @@ export default function FuncionariosManager() {
                     <Select
                       value={profile.job_role_id || ''}
                       onChange={(e) => handleUpdateProfile(profile.id, { job_role_id: e.target.value || null })}
-                      disabled={updating === profile.id || profile.role !== 'employee'}
+                      disabled={updating === profile.id || profile.id === currentUserId || !ehEquipeOperacional(profile.role) || ehAdministrador(profile.role)}
                       className="md:w-40"
                     >
                       <option value="">(Nenhum cargo)</option>
@@ -409,17 +410,16 @@ export default function FuncionariosManager() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Senha (mínimo 6 caracteres)</label>
-                <Input required minLength={6} type="password" value={employeeForm.password} onChange={e => setEmployeeForm({...employeeForm, password: e.target.value})} />
+                <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Senha (mínimo 12 caracteres)</label>
+                <Input required minLength={12} type="password" value={employeeForm.password} onChange={e => setEmployeeForm({...employeeForm, password: e.target.value})} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 ml-1 opacity-70">Nível de Acesso</label>
                   <Select value={employeeForm.role} onChange={e => setEmployeeForm({...employeeForm, role: e.target.value})}>
-                    <option value="employee">Funcionário (Checklist)</option>
+                    <option value="employee">Funcionário (operação)</option>
                     <option value="admin">Administrador (Painel)</option>
-                    <option value="receptionist">Recepcionista</option>
                   </Select>
                 </div>
                 <div>

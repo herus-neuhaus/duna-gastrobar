@@ -12,7 +12,10 @@ await db.connect();
 try {
   assert.equal((await db.query('select system_identifier from pg_control_system()')).rows[0].system_identifier, identity);
   const migrations = readdirSync(new URL('../supabase/migrations/', import.meta.url));
-  for (const nome of ['require_cpf_optional_email', 'configuracoes_estabelecimento']) {
+  const nomes = ['require_cpf_optional_email', 'configuracoes_estabelecimento'];
+  if (process.argv.includes('--acessos')) nomes.push('alinhar_acessos_administrador_operacao');
+  nomes.push('preservar_reservas_em_dias_fechados');
+  for (const nome of nomes) {
     const arquivos = migrations.filter((arquivo) => arquivo.endsWith(`_${nome}.sql`));
     assert.equal(arquivos.length, 1, `Migração única esperada para ${nome}`);
     const arquivo = arquivos[0], versao = arquivo.split('_')[0];

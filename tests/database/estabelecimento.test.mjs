@@ -98,17 +98,19 @@ test('funcionamento: horário excepcional reduz agenda sem ampliar as reservas',
   assert.equal((await db.query('select reservation_time_is_available($1,\'08:00\') disponivel', [data])).rows[0].disponivel, false);
 }));
 
-test('funcionamento: fechamento conflitante faz rollback sem cancelar reserva', () => transaction(async () => {
+test('funcionamento: fechamento preserva reserva existente e bloqueia novas entradas', () => transaction(async () => {
   await owner();
   const dias = await config(), data = await date();
   const id = await reservation(data);
+  const antes = (await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva;
   dias.push({ dia_semana: null, data_excecao: data, fechado: true, periodos: [], reservas: [] });
-  await db.query('savepoint conflito');
-  await assert.rejects(save(dias), /AGENDA_CONFLITO_RESERVAS:1/);
-  await db.query('rollback to savepoint conflito');
-  assert.equal((await db.query('select versao from configuracoes_estabelecimento')).rows[0].versao, 0);
-  assert.equal((await db.query('select status from reservations where id=$1', [id])).rows[0].status, 'pending');
-  assert.equal((await db.query('select count(*)::int n from alteracoes_funcionamento')).rows[0].n, 0);
+  assert.equal(await save(dias), 1);
+  assert.deepEqual((await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva, antes);
+  assert.equal((await db.query('select reservation_time_is_available($1,\'12:00\') disponivel', [data])).rows[0].disponivel, false);
+  assert.equal((await db.query('select count(*)::int n from alteracoes_funcionamento')).rows[0].n, 1);
+  await db.query('savepoint nova_reserva');
+  await assert.rejects(reservation(data), /RESERVATION_TIME_UNAVAILABLE/);
+  await db.query('rollback to savepoint nova_reserva');
 }));
 
 test('funcionamento: parâmetros de ocupação de reservas antigas não mudam com a agenda', () => transaction(async () => {
@@ -166,7 +168,7 @@ test('funcionamento: nem o dono contorna auditoria por escrita direta na agenda'
   assert.equal((await db.query('select count(*)::int n from dias_funcionamento')).rows[0].n, 7);
 }));
 
-test('funcionamento: salvamento aguarda reserva concorrente e revalida antes de fechar', async () => {
+test('funcionamento: fechamento aguarda reserva concorrente e preserva a que entrou antes', async () => {
   const primeiro = new pg.Client(connection), segundo = new pg.Client(connection);
   let autor, reserva;
   await db.query('begin');
@@ -180,7 +182,7 @@ test('funcionamento: salvamento aguarda reserva concorrente e revalida antes de 
     reserva = await reservation(data, null, primeiro);
     await segundo.query("select set_config('request.jwt.claim.sub',$1,true)", [autor]);
     const pid = (await segundo.query('select pg_backend_pid() pid')).rows[0].pid;
-    const pendente = segundo.query('select salvar_funcionamento_estabelecimento($1,0)', [JSON.stringify(dias)]).then(() => null, (error) => error);
+    const pendente = segundo.query('select salvar_funcionamento_estabelecimento($1,0) versao', [JSON.stringify(dias)]).then((result) => ({ result }), (error) => ({ error }));
     let bloqueado = false;
     for (let tentativa = 0; tentativa < 100; tentativa++) {
       bloqueado = (await db.query('select cardinality(pg_blocking_pids($1)) > 0 bloqueado', [pid])).rows[0].bloqueado;
@@ -189,7 +191,11 @@ test('funcionamento: salvamento aguarda reserva concorrente e revalida antes de 
     }
     assert.ok(bloqueado, 'o salvamento deve aguardar a transação da reserva');
     await primeiro.query('commit');
-    assert.match((await pendente)?.message || '', /AGENDA_CONFLITO_RESERVAS:1/);
+    const resultado = await pendente;
+    assert.equal(resultado.error, undefined);
+    assert.equal(resultado.result.rows[0].versao, 1);
+    assert.equal((await segundo.query('select reservation_time_is_available($1,\'12:00\') disponivel', [data])).rows[0].disponivel, false);
+    assert.equal((await segundo.query('select status from reservations where id=$1', [reserva])).rows[0].status, 'pending');
     await segundo.query('rollback');
     assert.equal((await db.query('select versao from configuracoes_estabelecimento')).rows[0].versao, 0);
   } finally {
@@ -199,3 +205,60 @@ test('funcionamento: salvamento aguarda reserva concorrente e revalida antes de 
     await db.query('delete from auth.users where id=$1', [autor]);
   }
 });
+
+test('funcionamento: fechar domingo mantém mesas, decoração, token e edição no mesmo horário', () => transaction(async () => {
+  await owner();
+  const dias = await config();
+  const domingo = dias.find((dia) => dia.dia_semana === 0);
+  const data = (await db.query("select (current_date + 365 + ((0-extract(dow from current_date+365)::int+7)%7))::text d")).rows[0].d;
+  const area = randomUUID(), mesa = randomUUID(), decoracao = randomUUID();
+  await db.query('insert into restaurant_areas(id,name) values($1,\'Teste de domingo\')', [area]);
+  await db.query('insert into restaurant_tables(id,area_id,code,min_capacity,max_capacity) values($1,$2,$3,1,8)', [mesa, area, `D-${mesa.slice(0, 8)}`]);
+  await db.query("insert into decorations(id,name,image_path,image_url) values($1::uuid,'Domingo preservado',$1::text,'https://example.invalid/domingo')", [decoracao]);
+  const id = await reservation(data, decoracao);
+  await db.query("update reservations set reservation_access_token_hash='token-domingo' where id=$1", [id]);
+  await db.query('select * from replace_reservation_table_assignments($1,$2::uuid[])', [id, [mesa]]);
+  const antes = (await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva;
+  const ocupacao = (await db.query('select * from get_reservation_occupancy_window($1)', [id])).rows;
+  const atribuicao = (await db.query('select * from reservation_table_assignments where reservation_id=$1', [id])).rows;
+  domingo.fechado = true; domingo.periodos = []; domingo.reservas = [];
+  await save(dias);
+  assert.deepEqual((await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva, antes);
+  assert.deepEqual((await db.query('select * from get_reservation_occupancy_window($1)', [id])).rows, ocupacao);
+  assert.deepEqual((await db.query('select * from reservation_table_assignments where reservation_id=$1', [id])).rows, atribuicao);
+  assert.equal((await db.query('select count(*)::int n from get_reservation_available_times($1,$1)', [data])).rows[0].n, 0);
+  const alterada = await db.query("select * from update_reservation_with_access_token($1,'token-domingo',$2,'12:00',1)", [id, data]);
+  assert.equal(alterada.rows[0].num_guests, 1);
+  const depois = (await db.query('select service_starts_at,commercial_turn,decoration_service_starts_at from reservations where id=$1', [id])).rows[0];
+  assert.equal(depois.service_starts_at, antes.service_starts_at);
+  assert.equal(depois.commercial_turn, antes.commercial_turn);
+  assert.equal(depois.decoration_service_starts_at, antes.decoration_service_starts_at);
+  assert.equal((await db.query("select * from transition_reservation_status($1,array['pending'],'confirmed')", [id])).rows[0].status, 'confirmed');
+  await db.query('savepoint reagendar_fechado');
+  await assert.rejects(db.query("update reservations set reservation_time='12:30' where id=$1", [id]), /RESERVATION_TIME_UNAVAILABLE/);
+  await db.query('rollback to savepoint reagendar_fechado');
+}));
+
+test('funcionamento: dia aberto ainda rejeita alteração que invalide uma reserva', () => transaction(async () => {
+  await owner();
+  const dias = await config(), data = await date();
+  await reservation(data);
+  const terca = dias.find((dia) => dia.dia_semana === 2);
+  terca.periodos[0].abre_as = '18:00';
+  terca.reservas = terca.reservas.filter((janela) => janela.commercial_turn === 'dinner');
+  await assert.rejects(save(dias), /AGENDA_CONFLITO_RESERVAS:1/);
+}));
+
+test('funcionamento: exceção de capacidade de reserva preservada usa o turno original', () => transaction(async () => {
+  await owner();
+  const dias = await config(), data = await date();
+  const id = await reservation(data);
+  const outro = await reservation(data);
+  await db.query('update reservations set num_guests=78 where id=$1', [outro]);
+  const terca = dias.find((dia) => dia.dia_semana === 2);
+  terca.fechado = true; terca.periodos = []; terca.reservas = [];
+  await save(dias);
+  await db.query('set local role authenticated');
+  const alterada = await db.query("select * from update_reservation_with_authorized_overrides($1,$2,'12:00',3,'Aumento autorizado da reserva existente',null,null)", [id, data]);
+  assert.equal(alterada.rows[0].num_guests, 3);
+}));

@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import { isReservationOwner } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { CARGOS_PAINEL } from '@/lib/permissoes';
 
 export async function GET() {
-  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente o dono pode gerenciar permissões.' }, { status: 403 });
+  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente administradores podem gerenciar permissões.' }, { status: 403 });
   const supabase = createAdminClient();
   const [profiles, permissions, audits] = await Promise.all([
-    supabase.from('profiles').select('id,full_name,email,role').in('role', ['admin', 'dono', 'gerente', 'receptionist', 'portaria']).order('full_name'),
+    supabase.from('profiles').select('id,full_name,email,role').in('role', [...CARGOS_PAINEL]).order('full_name'),
     supabase.from('reservation_capacity_permissions').select('profile_id,granted_by,granted_at,revoked_by,revoked_at'),
     supabase.from('reservation_capacity_permission_audits').select('id,profile_id,actor_id,action,reason,created_at').order('created_at', { ascending: false }).limit(50),
   ]);
@@ -16,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente o dono pode gerenciar permissões.' }, { status: 403 });
+  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente administradores podem gerenciar permissões.' }, { status: 403 });
   try {
     const body = await request.json();
     if (typeof body.profileId !== 'string' || typeof body.granted !== 'boolean' || typeof body.reason !== 'string') {

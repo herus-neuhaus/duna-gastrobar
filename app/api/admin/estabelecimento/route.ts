@@ -6,7 +6,7 @@ import { validarConfiguracaoEstabelecimento, type ConfiguracaoEstabelecimento } 
 import type { Json } from '@/lib/supabase/database.types';
 
 export async function GET() {
-  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente o dono pode configurar o estabelecimento.' }, { status: 403 });
+  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente administradores podem configurar o estabelecimento.' }, { status: 403 });
   try {
     return NextResponse.json(await consultarFuncionamento(), { headers: { 'Cache-Control': 'no-store' } });
   } catch {
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente o dono pode configurar o estabelecimento.' }, { status: 403 });
+  if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente administradores podem configurar o estabelecimento.' }, { status: 403 });
   let body: ConfiguracaoEstabelecimento;
   try {
     body = await request.json();
@@ -32,7 +32,7 @@ export async function PUT(request: Request) {
       const quantidade = error.message.match(/AGENDA_CONFLITO_RESERVAS:(\d+)/)?.[1];
       return NextResponse.json({ error: `A alteração conflita com ${quantidade || 'algumas'} reserva(s) futura(s). Revise os horários ou reagende essas reservas antes de salvar. Nenhuma alteração foi aplicada.` }, { status: 409 });
     }
-    if (error.message.includes('OWNER_REQUIRED')) return NextResponse.json({ error: 'Somente o dono pode alterar o funcionamento.' }, { status: 403 });
+    if (error.message.includes('OWNER_REQUIRED')) return NextResponse.json({ error: 'Somente administradores podem alterar o funcionamento.' }, { status: 403 });
     const mensagem = error.message.includes('RESERVA_FORA_FUNCIONAMENTO') ? 'As reservas e sua permanência devem caber no funcionamento.'
       : /SOBREPOST/.test(error.message) ? 'Existem períodos ou janelas de reserva sobrepostos.'
         : error.code === '23505' ? 'Existem horários de reserva com o mesmo início. Salve a remoção antes de reutilizar esse horário.'

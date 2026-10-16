@@ -7,14 +7,21 @@ describe('protected route access', () => {
     expect(getProtectedRouteRedirect('/admin', 'unknown')).toBe('/login');
   });
 
-  it('routes employees away from the admin panel', () => {
-    expect(getProtectedRouteRedirect('/admin?view=reservations', 'employee')).toBe('/funcionario/checklist');
+  it('allows employees into operation and their checklist, but not configuration', () => {
+    expect(getProtectedRouteRedirect('/admin?view=reservations', 'employee')).toBeNull();
+    expect(getProtectedRouteRedirect('/admin', 'employee')).toBe('/admin?view=operations');
+    expect(getProtectedRouteRedirect('/admin', 'employee', 'estabelecimento')).toBe('/admin?view=operations');
     expect(getProtectedRouteRedirect('/funcionario/checklist', 'employee')).toBeNull();
   });
 
   it('allows only panel roles into admin routes', () => {
     expect(getProtectedRouteRedirect('/admin', 'admin')).toBeNull();
-    expect(getProtectedRouteRedirect('/admin', 'receptionist')).toBeNull();
-    expect(getProtectedRouteRedirect('/funcionario/checklist', 'admin')).toBe('/admin');
+    expect(getProtectedRouteRedirect('/admin', 'receptionist')).toBe('/admin?view=operations');
+    expect(getProtectedRouteRedirect('/funcionario/checklist', 'admin')).toBeNull();
+  });
+  it('sends each level to the right initial page after login', () => {
+    expect(getProtectedRouteRedirect('/login', 'admin')).toBe('/admin');
+    expect(getProtectedRouteRedirect('/login', 'gerente')).toBe('/admin?view=operations');
+    expect(getProtectedRouteRedirect('/admin', 'admin', 'estabelecimento')).toBeNull();
   });
 });

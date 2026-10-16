@@ -175,9 +175,9 @@ test('capacity permissions: owner grant/revoke, explicit delegated uses, actor a
 
   await inTransaction(async () => {
     await assert.rejects(actor(ownerId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [ownerId, 'Self assignment'])), /CAPACITY_PERMISSION_SELF_ASSIGNMENT_FORBIDDEN/);
-    await assert.rejects(actor(adminId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [delegateId, 'Admin cannot grant'])), /OWNER_REQUIRED/);
-    await assert.rejects(actor(adminId, () => db.query(
-      `select * from create_reservation_with_authorized_overrides('Admin denied','denied@example.invalid','69900000001',$1,'12:00',10,null,null,null,null,'not_required',0,'token','No grant',null,null)`, [d]),
+    await assert.rejects(actor(delegateId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [adminId, 'Employee cannot grant'])), /OWNER_REQUIRED/);
+    await assert.rejects(actor(delegateId, () => db.query(
+      `select * from create_reservation_with_authorized_overrides('Employee denied','denied@example.invalid','69900000001',$1,'12:00',10,null,null,null,null,'not_required',0,'token','No grant',null,null)`, [d]),
     ), /CAPACITY_OVERRIDE_NOT_AUTHORIZED/);
 
     await actor(ownerId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [delegateId, 'Cobertura da operação']));
@@ -238,8 +238,8 @@ test('database boundary: authenticated admin cannot forge source, turn or overri
        values ('Forge','forge@example.invalid','69911111111',$1,'12:00',1,'walk_in','dinner','fake', $2, now())`, [d, adminId],
     )), /permission denied for table reservations/);
     await assert.rejects(actor(adminId, () => db.query("update reservations set source='walk_in',commercial_turn='dinner' where id=$1", [existing])), /permission denied for table reservations/);
-    await assert.rejects(actor(adminId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [adminId, 'Self grant'])), /OWNER_REQUIRED/);
-    await assert.rejects(actor(adminId, () => db.query("update profiles set role='dono' where id=$1", [targetId])), /OWNER_ROLE_CHANGE_REQUIRES_APPROVED_PROCEDURE/);
+    await assert.rejects(actor(adminId, () => db.query('select * from set_reservation_capacity_permission($1,true,$2)', [adminId, 'Self grant'])), /CAPACITY_PERMISSION_SELF_ASSIGNMENT_FORBIDDEN/);
+    await assert.rejects(actor(targetId, () => db.query("update profiles set role='admin' where id=$1", [targetId])), /CANNOT_CHANGE_OWN_ACCESS/);
   });
   await db.query('begin');
   try {

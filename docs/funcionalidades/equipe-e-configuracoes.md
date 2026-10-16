@@ -24,7 +24,7 @@ Tabelas: `tasks`, `task_categories`, `task_completions`, `employee_roles`, `prof
 
 ## Datas da agenda
 
-- **Estabelecimento:** o dono configura semana, períodos de funcionamento, janelas de reserva e exceções em `/admin?view=estabelecimento`. Consulte [Funcionamento do estabelecimento](funcionamento-estabelecimento.md) para modelo, integração e migração.
+- **Estabelecimento:** administradores configuram semana, períodos de funcionamento, janelas de reserva e exceções em `/admin?view=estabelecimento`. Consulte [Funcionamento do estabelecimento](funcionamento-estabelecimento.md) para modelo, integração e migração.
 
 - `SpecialDatesManager` mantém `special_dates`, com descrição e campos como taxa/quantidade incluída.
 - `BlockedDatesManager` mantém `blocked_dates`, com data e motivo.

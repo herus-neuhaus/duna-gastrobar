@@ -49,6 +49,7 @@ import ReservationTableAllocator from './ReservationTableAllocator';
 import OperationsDashboard from './OperationsDashboard';
 import FinanceDashboard from './FinanceDashboard';
 import EstabelecimentoManager from './EstabelecimentoManager';
+import { useAcessoAdministrativo } from '@/app/components/ContextoAcesso';
 import { PageHeader } from '@/components/ui/page-header';
 import { ReservationStatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
@@ -631,6 +632,7 @@ function ReservationActions({
 }
 
 function NewReservationView() {
+  const acessoAdministrativo = useAcessoAdministrativo();
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -815,9 +817,9 @@ function NewReservationView() {
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Ocasião ou observação</span>
           <Textarea value={form.notes} onChange={(event) => updateField('notes', event.target.value)} maxLength={1000} placeholder="Ex.: Aniversário" />
         </label>
-        <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        {acessoAdministrativo && <div className="sm:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-amber-800">Exceções autorizadas</p>
-          <p className="mt-1 text-xs text-amber-900/70">Somente o dono pode registrar uma exceção. O motivo e o efeito ficam auditados.</p>
+          <p className="mt-1 text-xs text-amber-900/70">Administradores podem registrar exceções com motivo obrigatório. O efeito fica auditado.</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label>
               <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-amber-900/70">Exceder capacidade</span>
@@ -835,7 +837,7 @@ function NewReservationView() {
               </Select>
             </label>}
           </div>
-        </div>
+        </div>}
         {decorations.length > 0 && <label className="sm:col-span-2">
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Decoração</span>
           <Select value={form.decorationId} onChange={(event) => updateField('decorationId', event.target.value)}>

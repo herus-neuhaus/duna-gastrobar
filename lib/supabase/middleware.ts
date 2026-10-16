@@ -23,7 +23,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
@@ -31,6 +31,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
+          Object.entries(headers || {}).forEach(([name, value]) => supabaseResponse.headers.set(name, value));
         },
       },
     }
@@ -52,11 +53,15 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const redirectPath = getProtectedRouteRedirect(request.nextUrl.pathname, user ? userRole : null);
+  const redirectPath = getProtectedRouteRedirect(request.nextUrl.pathname, user ? userRole : null, request.nextUrl.searchParams.get('view'));
   if (redirectPath) {
-    const url = request.nextUrl.clone()
-    url.pathname = redirectPath
-    return NextResponse.redirect(url)
+    const response = NextResponse.redirect(new URL(redirectPath, request.url));
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+    for (const header of ['cache-control', 'expires', 'pragma']) {
+      const value = supabaseResponse.headers.get(header);
+      if (value) response.headers.set(header, value);
+    }
+    return response;
   }
 
   return supabaseResponse

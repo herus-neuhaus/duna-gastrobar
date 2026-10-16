@@ -21,7 +21,7 @@ function walkInErrorMessage(message: string) {
   if (message.includes('INVALID_WALK_IN')) return 'Confira o nome, telefone e quantidade de pessoas.';
   if (message.includes('RESERVATION_TIME_UNAVAILABLE')) return 'Esse horário não está disponível na agenda.';
   if (message.includes('CAPACITY_EXCEEDED')) return 'A capacidade deste turno foi atingida.';
-  if (message.includes('RESERVATION_TURN_CLASSIFICATION_REQUIRED')) return 'Há reservas antigas sem turno classificado; peça ao dono para revisar.';
+  if (message.includes('RESERVATION_TURN_CLASSIFICATION_REQUIRED')) return 'Há reservas antigas sem turno classificado; peça a um administrador para revisar.';
   if (message.includes('RESERVATION_STAFF_REQUIRED')) return 'Sua conta não tem autorização para registrar chegadas sem reserva.';
   return 'Não foi possível registrar a chegada sem reserva.';
 }
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
   }
   if (body.action === 'classify_reservation_turn' && typeof body.reservationId === 'string' && typeof body.commercialTurn === 'string' && ['lunch', 'dinner'].includes(body.commercialTurn) && typeof body.reason === 'string') {
-    if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente o dono pode classificar reservas históricas.' }, { status: 403 });
+    if (!(await isReservationOwner())) return NextResponse.json({ error: 'Somente administradores podem classificar reservas históricas.' }, { status: 403 });
     const reason = body.reason.trim();
     if (reason.length < 3 || reason.length > 1000) return NextResponse.json({ error: 'Informe um motivo entre 3 e 1000 caracteres.' }, { status: 400 });
     const { data, error } = await (await createClient()).rpc('classify_reservation_commercial_turn', {
