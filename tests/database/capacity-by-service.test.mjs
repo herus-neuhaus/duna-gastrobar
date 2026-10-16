@@ -105,7 +105,7 @@ async function reservationAsOwner(ownerId, d, options = {}) {
   return actor(ownerId, async () => {
     const { rows } = await db.query(
       `select * from create_reservation_with_authorized_overrides(
-       'Authorized capacity','authorized@example.invalid',$1,$2,$3,$4,null,null,$5,null,
+       'Authorized capacity','authorized@example.invalid',$1,$2,$3,$4,null,null,$5,'52998224725',
        'not_required',0,'synthetic-token',$6,$7,$8)`,
       [options.phone || randomUUID(), d, options.time || '12:00', options.guests || 2,
         options.decorationId || null, options.capacityReason || null,
@@ -194,7 +194,7 @@ test('capacity permissions: owner grant/revoke, explicit delegated uses, actor a
     ), /SCHEDULE_OVERRIDE_NOT_AUTHORIZED/);
     const scheduleId = await actor(adminId, async () => {
       const result = await db.query(
-        `select * from create_reservation_with_authorized_overrides('Admin schedule','schedule@example.invalid','69900000003',$1,'15:00',1,null,null,null,null,'not_required',0,'token',null,'Evento operacional','dinner')`, [d],
+        `select * from create_reservation_with_authorized_overrides('Admin schedule','schedule@example.invalid','69900000003',$1,'15:00',1,null,null,null,'52998224725','not_required',0,'token',null,'Evento operacional','dinner')`, [d],
       );
       reservationIds.push(result.rows[0].id);
       return result.rows[0].id;

@@ -15,6 +15,7 @@ import {
   TableProperties,
   BadgeDollarSign,
   ChevronDown,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -36,6 +37,7 @@ const navigationGroups = [
   {
     label: 'Configurações',
     items: [
+      { key: 'estabelecimento', label: 'Estabelecimento', href: '/admin?view=estabelecimento', icon: Settings },
       { key: 'decorations', label: 'Espaços e decorações', href: '/admin?view=decorations', icon: ImagePlus },
       { key: 'special_dates', label: 'Datas especiais', href: '/admin?view=special_dates', icon: CalendarDays },
       { key: 'blocked_dates', label: 'Bloqueios', href: '/admin?view=blocked_dates', icon: CalendarOff },
@@ -106,6 +108,11 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
           .single();
         if (profileError) throw profileError;
         setUserRole(profile.role);
+
+        if (activeItem === 'estabelecimento' && profile.role !== 'dono') {
+          router.replace('/admin?view=reservations');
+          return;
+        }
 
         if (activeItem === 'finance' && !['dono', 'gerente'].includes(profile.role || '')) {
           router.replace('/admin?view=reservations');
@@ -216,7 +223,7 @@ export default function AdminLayoutShell({ children, activeItem }: { children: R
 
         <nav aria-label="Navegação do painel" className="flex-1 space-y-6 px-4">
           {navigationGroups.map((group) => {
-            const items = group.items.filter((item) => item.key !== 'finance' || ['dono', 'gerente'].includes(userRole || ''));
+            const items = group.items.filter((item) => (item.key !== 'finance' || ['dono', 'gerente'].includes(userRole || '')) && (item.key !== 'estabelecimento' || userRole === 'dono'));
             if (items.length === 0) return null;
             const isExpanded = expandedGroups[group.label] ?? false;
             const groupId = `admin-nav-${group.label.toLowerCase().replace(/\s+/g, '-')}`;

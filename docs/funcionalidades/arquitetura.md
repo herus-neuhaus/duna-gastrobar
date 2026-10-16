@@ -79,6 +79,8 @@ Não foi encontrada uma camada única de `services/` nem controllers separados: 
 
 ## Domínios e principais tabelas (tipos gerados)
 
+- **Convenção:** novas tabelas usam nomes em português do Brasil, em `snake_case` e sem acentos. Tabelas existentes mantêm seus nomes, salvo migração de renomeação explicitamente planejada.
+- **Estabelecimento/funcionamento:** `configuracoes_estabelecimento`, `dias_funcionamento`, `periodos_funcionamento`, `alteracoes_funcionamento`. Consulte [funcionamento do estabelecimento](funcionamento-estabelecimento.md).
 - **Reservas/agenda:** `reservations`, `reservation_events`, `special_dates`, `blocked_dates`, `blacklist`, `reservation_recovery_challenges`, `reservation_schedule_slots`, `reservation_schedule_date_slots`.
 - **Pagamento:** `reservation_payments` e campos de cobrança em `reservations`.
 - **Mesas/operação:** `restaurant_areas`, `restaurant_tables`, `reservation_table_assignments`, `waitlist_entries`, `reservation_turn_classification_issues`.

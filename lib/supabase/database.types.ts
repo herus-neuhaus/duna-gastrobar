@@ -4,6 +4,42 @@ export type Json = string | number | boolean | null | {
 export type Database = {
     "public": {
         Tables: {
+            "alteracoes_funcionamento": {
+                Row: {
+                    "autor_id": string;
+                    "configuracao": NonNullable<Json>;
+                    "criado_em": string;
+                    "id": string;
+                    "versao": number;
+                };
+                Insert: {
+                    "autor_id": string;
+                    "configuracao": NonNullable<Json>;
+                    "criado_em"?: string;
+                    "id"?: string;
+                    "versao": number;
+                };
+                Update: {
+                    "autor_id"?: string;
+                    "configuracao"?: NonNullable<Json>;
+                    "criado_em"?: string;
+                    "id"?: string;
+                    "versao"?: number;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "alteracoes_funcionamento_autor_id_fkey";
+                        columns: [
+                            "autor_id"
+                        ];
+                        isOneToOne: false;
+                        referencedRelation: "profiles";
+                        referencedColumns: [
+                            "id"
+                        ];
+                    }
+                ];
+            };
             "blacklist": {
                 Row: {
                     "blocked_by": string | null;
@@ -63,6 +99,28 @@ export type Database = {
                 Relationships: [
                 ];
             };
+            "configuracoes_estabelecimento": {
+                Row: {
+                    "atualizado_em": string;
+                    "funcionamento_configurado": boolean;
+                    "id": boolean;
+                    "versao": number;
+                };
+                Insert: {
+                    "atualizado_em"?: string;
+                    "funcionamento_configurado"?: boolean;
+                    "id"?: boolean;
+                    "versao"?: number;
+                };
+                Update: {
+                    "atualizado_em"?: string;
+                    "funcionamento_configurado"?: boolean;
+                    "id"?: boolean;
+                    "versao"?: number;
+                };
+                Relationships: [
+                ];
+            };
             "decorations": {
                 Row: {
                     "active": boolean;
@@ -94,6 +152,34 @@ export type Database = {
                 Relationships: [
                 ];
             };
+            "dias_funcionamento": {
+                Row: {
+                    "ativo": boolean;
+                    "atualizado_em": string;
+                    "data_excecao": string | null;
+                    "dia_semana": number | null;
+                    "fechado": boolean;
+                    "id": string;
+                };
+                Insert: {
+                    "ativo"?: boolean;
+                    "atualizado_em"?: string;
+                    "data_excecao"?: string | null;
+                    "dia_semana"?: number | null;
+                    "fechado"?: boolean;
+                    "id"?: string;
+                };
+                Update: {
+                    "ativo"?: boolean;
+                    "atualizado_em"?: string;
+                    "data_excecao"?: string | null;
+                    "dia_semana"?: number | null;
+                    "fechado"?: boolean;
+                    "id"?: string;
+                };
+                Relationships: [
+                ];
+            };
             "employee_roles": {
                 Row: {
                     "created_at": string | null;
@@ -111,6 +197,45 @@ export type Database = {
                     "name"?: string;
                 };
                 Relationships: [
+                ];
+            };
+            "periodos_funcionamento": {
+                Row: {
+                    "abre_as": string;
+                    "ativo": boolean;
+                    "dia_funcionamento_id": string;
+                    "encerra_dia_seguinte": boolean;
+                    "fecha_as": string;
+                    "id": string;
+                };
+                Insert: {
+                    "abre_as": string;
+                    "ativo"?: boolean;
+                    "dia_funcionamento_id": string;
+                    "encerra_dia_seguinte"?: boolean;
+                    "fecha_as": string;
+                    "id"?: string;
+                };
+                Update: {
+                    "abre_as"?: string;
+                    "ativo"?: boolean;
+                    "dia_funcionamento_id"?: string;
+                    "encerra_dia_seguinte"?: boolean;
+                    "fecha_as"?: string;
+                    "id"?: string;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "periodos_funcionamento_dia_funcionamento_id_fkey";
+                        columns: [
+                            "dia_funcionamento_id"
+                        ];
+                        isOneToOne: false;
+                        referencedRelation: "dias_funcionamento";
+                        referencedColumns: [
+                            "id"
+                        ];
+                    }
                 ];
             };
             "profiles": {
@@ -667,6 +792,7 @@ export type Database = {
                     "created_at": string;
                     "ends_at": string;
                     "id": string;
+                    "periodo_funcionamento_id": string | null;
                     "reservation_date": string;
                     "reservation_duration_minutes": number;
                     "slot_interval_minutes": number;
@@ -680,6 +806,7 @@ export type Database = {
                     "created_at"?: string;
                     "ends_at": string;
                     "id"?: string;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_date": string;
                     "reservation_duration_minutes"?: number;
                     "slot_interval_minutes"?: number;
@@ -693,6 +820,7 @@ export type Database = {
                     "created_at"?: string;
                     "ends_at"?: string;
                     "id"?: string;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_date"?: string;
                     "reservation_duration_minutes"?: number;
                     "slot_interval_minutes"?: number;
@@ -701,6 +829,17 @@ export type Database = {
                     "updated_at"?: string;
                 };
                 Relationships: [
+                    {
+                        foreignKeyName: "reservation_schedule_date_slots_periodo_funcionamento_id_fkey";
+                        columns: [
+                            "periodo_funcionamento_id"
+                        ];
+                        isOneToOne: false;
+                        referencedRelation: "periodos_funcionamento";
+                        referencedColumns: [
+                            "id"
+                        ];
+                    }
                 ];
             };
             "reservation_schedule_slots": {
@@ -711,6 +850,7 @@ export type Database = {
                     "day_of_week": number;
                     "ends_at": string;
                     "id": string;
+                    "periodo_funcionamento_id": string | null;
                     "reservation_duration_minutes": number;
                     "slot_interval_minutes": number;
                     "starts_at": string;
@@ -724,6 +864,7 @@ export type Database = {
                     "day_of_week": number;
                     "ends_at": string;
                     "id"?: string;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_duration_minutes"?: number;
                     "slot_interval_minutes"?: number;
                     "starts_at": string;
@@ -737,6 +878,7 @@ export type Database = {
                     "day_of_week"?: number;
                     "ends_at"?: string;
                     "id"?: string;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_duration_minutes"?: number;
                     "slot_interval_minutes"?: number;
                     "starts_at"?: string;
@@ -744,6 +886,17 @@ export type Database = {
                     "updated_at"?: string;
                 };
                 Relationships: [
+                    {
+                        foreignKeyName: "reservation_schedule_slots_periodo_funcionamento_id_fkey";
+                        columns: [
+                            "periodo_funcionamento_id"
+                        ];
+                        isOneToOne: false;
+                        referencedRelation: "periodos_funcionamento";
+                        referencedColumns: [
+                            "id"
+                        ];
+                    }
                 ];
             };
             "reservation_table_assignments": {
@@ -849,15 +1002,18 @@ export type Database = {
                     "customer_id": string | null;
                     "decoration_id": string | null;
                     "decoration_service_starts_at": string | null;
+                    "duracao_reserva_minutos": number | null;
                     "email": string | null;
                     "expires_at": string | null;
                     "id": string;
+                    "intervalo_troca_minutos": number | null;
                     "location_id": string | null;
                     "name": string;
                     "notes": string | null;
                     "num_guests": number;
                     "payment_amount": number | null;
                     "payment_status": string | null;
+                    "periodo_funcionamento_id": string | null;
                     "reservation_access_token_hash": string | null;
                     "reservation_date": string;
                     "reservation_time": string;
@@ -888,15 +1044,18 @@ export type Database = {
                     "customer_id"?: string | null;
                     "decoration_id"?: string | null;
                     "decoration_service_starts_at"?: string | null;
-                    "email": string | null;
+                    "duracao_reserva_minutos"?: number | null;
+                    "email"?: string | null;
                     "expires_at"?: string | null;
                     "id"?: string;
+                    "intervalo_troca_minutos"?: number | null;
                     "location_id"?: string | null;
                     "name": string;
                     "notes"?: string | null;
                     "num_guests": number;
                     "payment_amount"?: number | null;
                     "payment_status"?: string | null;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_access_token_hash"?: string | null;
                     "reservation_date": string;
                     "reservation_time": string;
@@ -927,15 +1086,18 @@ export type Database = {
                     "customer_id"?: string | null;
                     "decoration_id"?: string | null;
                     "decoration_service_starts_at"?: string | null;
+                    "duracao_reserva_minutos"?: number | null;
                     "email"?: string | null;
                     "expires_at"?: string | null;
                     "id"?: string;
+                    "intervalo_troca_minutos"?: number | null;
                     "location_id"?: string | null;
                     "name"?: string;
                     "notes"?: string | null;
                     "num_guests"?: number;
                     "payment_amount"?: number | null;
                     "payment_status"?: string | null;
+                    "periodo_funcionamento_id"?: string | null;
                     "reservation_access_token_hash"?: string | null;
                     "reservation_date"?: string;
                     "reservation_time"?: string;
@@ -981,6 +1143,17 @@ export type Database = {
                         ];
                         isOneToOne: false;
                         referencedRelation: "decorations";
+                        referencedColumns: [
+                            "id"
+                        ];
+                    },
+                    {
+                        foreignKeyName: "reservations_periodo_funcionamento_id_fkey";
+                        columns: [
+                            "periodo_funcionamento_id"
+                        ];
+                        isOneToOne: false;
+                        referencedRelation: "periodos_funcionamento";
                         referencedColumns: [
                             "id"
                         ];
@@ -1540,11 +1713,11 @@ export type Database = {
             };
             "create_walk_in_reservation": {
                 Args: {
+                    "p_cpf"?: string | null;
                     "p_email": string | null;
                     "p_name": string;
                     "p_notes": string;
                     "p_num_guests": number;
-                    "p_cpf"?: string | null;
                     "p_reservation_date": string;
                     "p_reservation_time": string;
                     "p_whatsapp": string;
@@ -1572,15 +1745,18 @@ export type Database = {
                     "customer_id": string | null;
                     "decoration_id": string | null;
                     "decoration_service_starts_at": string | null;
-                    "email": string;
+                    "duracao_reserva_minutos": number | null;
+                    "email": string | null;
                     "expires_at": string | null;
                     "id": string;
+                    "intervalo_troca_minutos": number | null;
                     "location_id": string | null;
                     "name": string;
                     "notes": string | null;
                     "num_guests": number;
                     "payment_amount": number | null;
                     "payment_status": string | null;
+                    "periodo_funcionamento_id": string | null;
                     "reservation_access_token_hash": string | null;
                     "reservation_date": string;
                     "reservation_time": string;
@@ -1744,6 +1920,13 @@ export type Database = {
                     "p_reservation_time": string;
                 };
                 Returns: boolean;
+            };
+            "salvar_funcionamento_estabelecimento": {
+                Args: {
+                    "p_configuracao": Json;
+                    "p_versao": number;
+                };
+                Returns: number;
             };
             "set_reservation_capacity_permission": {
                 Args: {

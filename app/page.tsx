@@ -10,6 +10,7 @@ import { format, parse, isAfter, addHours, differenceInHours, getDay, addDays } 
 import { ptBR } from 'date-fns/locale';
 import { isValidCpf } from '@/lib/cpf';
 import { buildDuplicateReservationMessage, type DuplicateReservationChoice } from '@/lib/reservation-duplicate-message';
+import HorariosFuncionamento from '@/app/components/HorariosFuncionamento';
 
 type ReservationCredential = { id: string; token: string; phone: string };
 type Decoration = { id: string; name: string; image_url: string; available: boolean };
@@ -735,7 +736,7 @@ export default function DunaGastrobarReservation() {
               <Clock size={20} className="mt-0.5 shrink-0 text-[#e9a930]" />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#e9a930]">Horário de funcionamento</p>
-                <p className="mt-1 text-sm text-white/90">Terça a domingo: 11h30 às 23h00</p>
+                <HorariosFuncionamento />
               </div>
             </div>
             <div className="mt-4 flex items-start gap-3">

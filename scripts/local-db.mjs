@@ -46,7 +46,12 @@ if (action === 'start' || action === 'start:pre-plan-2a' || action === 'start:po
 } else {
   const generated = cli(['gen', 'types', 'typescript', '--local', '--schema', 'public'], true).trimStart();
   if (!generated.startsWith('export type Json')) throw new Error('Unexpected type generator output');
-  const types = ts.createPrinter().printFile(ts.createSourceFile('database.types.ts', generated, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+  // Postgres does not describe nullable function arguments in its catalog. These
+  // RPCs deliberately accept null for optional contact/CPF fields.
+  const nullableArguments = generated
+    .replace(/((?:"p_email"|p_email):\s*string)(?=\s*[,;}\n])/g, '$1 | null')
+    .replace(/((?:"p_cpf"|p_cpf)\?:\s*string)(?=\s*[,;}\n])/g, '$1 | null');
+  const types = ts.createPrinter().printFile(ts.createSourceFile('database.types.ts', nullableArguments, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
   const target = resolve(root, 'lib/supabase/database.types.ts');
   if (action === 'types:check') {
     if (readFileSync(target, 'utf8') !== types) throw new Error('Database types differ; run npm run db:types');
