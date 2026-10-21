@@ -112,7 +112,7 @@ test('capacity: independent concurrent inserts cannot exceed 80 in the same turn
 
 test('capacity: lunch and dinner are independent', async () => {
   const d = await date();
-  const id = await reservation(d, 80, { status: 'completed' });
+  const id = await reservation(d, 80, { status: 'confirmed' });
   await assert.rejects(db.query(insertQuery(d, 1)), /CAPACITY_EXCEEDED/);
   await reservation(d, 1, { time: '18:00' });
   await db.query("update reservations set status='cancelled' where id=$1", [id]);

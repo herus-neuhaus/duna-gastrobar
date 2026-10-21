@@ -21,6 +21,15 @@ Estados adicionais e exceções devem ser verificados na versão atual das migra
 - A resposta agrega ocupação por turno/horário e datas consideradas completas. A capacidade limite de 80 aparece no handler para classificar disponibilidade, enquanto as RPCs e migrations definem a contabilização final; divergência entre limites é item para revisão.
 - Funções de banco relevantes incluem versões de `get_reservation_capacity_availability`, `get_reservation_commercial_turn`, `get_reservation_service_start_for_commercial_turn`, `get_reservation_occupancy_window`, `validate_reservation_schedule` e verificações de disponibilidade. As migrations posteriores substituem versões históricas; usar o código mais recente aplicado, não somar regras antigas.
 - A consulta informa disponibilidade, mas não reserva capacidade por si só; criação/alteração precisa revalidar atomicamente no banco.
+- Alteração local aprovada: contar apenas pessoas de reservas pendentes,
+  confirmadas e acomodadas (também `pendente`/`confirmado` legados), liberando a
+  cota ao concluir, cancelar ou registrar não comparecimento. Não há liberação
+  automática por permanência estimada ou intervalo entre entradas. A cota segue
+  conservadora por data/turno; walk-ins continuam excluídos por decisão explícita.
+  Ver [funcionamento](funcionamento-estabelecimento.md) para migration e limites
+  de validação/implantação. O fallback do painel segue o mesmo conjunto de estados.
+- Alterar funcionamento ou remover janelas mantém reservas anteriores, mesas e
+  decorações. Novas reservas e reagendamentos normais respeitam a nova agenda.
 
 ## Mesas e áreas
 

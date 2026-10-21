@@ -1,0 +1,51 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openai/gpt-6.1-sol",
+  "default_agent": "duna-orchestrator",
+  "providers": {
+    "openai": {
+      "models": {
+        "gpt-6.1-sol": {
+          "settings": { "reasoningEffort": "high" }
+        }
+      }
+    }
+  },
+  "permissions": [
+    { "action": "execute", "resource": "*", "effect": "deny" },
+    { "action": "supabase_*", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    { "action": "external_directory", "resource": "*", "effect": "ask" },
+    { "action": "read", "resource": "*.env", "effect": "deny" },
+    { "action": "read", "resource": "*.env.*", "effect": "deny" },
+    { "action": "read", "resource": "*.env.example", "effect": "allow" }
+  ],
+  "policies": [
+    { "action": "tool.use", "resource": "supabase_*:*", "effect": "deny" },
+    { "action": "tool.use", "resource": "supabase_search_docs:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_get_project_url:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_list_migrations:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_list_tables:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_list_extensions:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_get_advisors:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_get_logs:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_generate_typescript_types:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_execute_sql:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "supabase_apply_migration:*", "effect": "allow" },
+    { "action": "tool.use", "resource": "read:*.env", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env.*", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.env.example", "effect": "allow" },
+    { "action": "tool.use", "resource": "edit:*.env*", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*.pem", "effect": "deny" },
+    { "action": "tool.use", "resource": "read:*/.ssh/*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:.git/*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*/.git/*", "effect": "deny" },
+    { "action": "tool.use", "resource": "edit:*.agents/*", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git push *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git reset *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git clean *", "effect": "deny" },
+    { "action": "tool.use", "resource": "shell:git checkout -- *", "effect": "deny" }
+  ]
+}

@@ -8,6 +8,7 @@ import { MetricCard } from '@/components/ui/metric-card';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/form-controls';
 import { Feedback } from '@/components/ui/feedback';
+import { consumesReservationCapacity } from '@/lib/reservation-status';
 
 type CapacitySlot = {
   reservation_time: string;
@@ -384,12 +385,12 @@ export default function OperationsDashboard() {
       {(['lunch', 'dinner'] as const).map((turn) => {
         const slot = capacityByTurn.get(turn);
         const occupied = slot?.occupied_guests ?? reservations
-          .filter((item) => item.commercial_turn === turn && item.source !== 'walk_in' && !['cancelled', 'cancelado'].includes(item.status.toLowerCase()))
+          .filter((item) => item.commercial_turn === turn && item.source !== 'walk_in' && consumesReservationCapacity(item.status))
           .reduce((sum, item) => sum + item.num_guests, 0);
         const full = slot?.has_unclassified_reservation || occupied >= 80;
         return <div key={turn} className="rounded-2xl border border-[#D9CFC1] bg-white p-5">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">{turn === 'lunch' ? 'Almoço' : 'Jantar'}</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/50">{turn === 'lunch' ? 'Almoço' : 'Jantar'} · reservas ativas</p>
             <span className={`text-xs font-bold ${full ? 'text-red-700' : 'text-[#4A3728]'}`}>{occupied} / 80</span>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EBE3D5]">

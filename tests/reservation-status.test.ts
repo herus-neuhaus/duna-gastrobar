@@ -2,11 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   canCancelReservation,
   canConfirmReservation,
+  consumesReservationCapacity,
   isCancelledReservation,
   normalizeReservationStatus,
 } from '@/lib/reservation-status';
 
 describe('reservation status transitions', () => {
+  it.each(['pending', 'pendente', 'confirmed', 'confirmado', 'seated', 'CONFIRMED', null])('counts active guests for status %s', (status) => {
+    expect(consumesReservationCapacity(status)).toBe(true);
+  });
+
+  it.each(['completed', 'concluido', 'no_show', 'cancelled', 'cancelado', 'unknown'])('does not consume capacity for status %s', (status) => {
+    expect(consumesReservationCapacity(status)).toBe(false);
+  });
   it('normalizes legacy cancelled status', () => {
     expect(normalizeReservationStatus('cancelado')).toBe('cancelled');
     expect(isCancelledReservation('CANCELLED')).toBe(true);
