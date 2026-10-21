@@ -116,13 +116,18 @@ async function reservationAsOwner(ownerId, d, options = {}) {
   });
 }
 
-test('capacity: completed and no_show count; only cancellation releases, and walk-ins are excluded', async () => {
+test('capacity: only active reservations count; completion, no-show and cancellation release, walk-ins stay excluded', async () => {
   const d = await date();
-  await reservation(d, 80, { status: 'completed' });
+  const lunch = await reservation(d, 80, { status: 'seated' });
   await assert.rejects(reservation(d, 1), /CAPACITY_EXCEEDED/);
-  const dinner = await reservation(d, 80, { time: '18:00', status: 'no_show' });
+  await db.query("select * from transition_reservation_status($1,array['seated'],'completed')", [lunch]);
+  await reservation(d, 80);
+  await assert.rejects(db.query("update reservations set status='confirmed' where id=$1", [lunch]), /CAPACITY_EXCEEDED/);
+  const dinner = await reservation(d, 80, { time: '18:00', status: 'confirmed' });
   await assert.rejects(reservation(d, 1, { time: '18:00' }), /CAPACITY_EXCEEDED/);
-  await db.query("update reservations set status='cancelled' where id=$1", [dinner]);
+  await db.query("select * from transition_reservation_status($1,array['confirmed'],'no_show')", [dinner]);
+  const nextDinner = await reservation(d, 80, { time: '18:00' });
+  await db.query("update reservations set status='cancelled' where id=$1", [nextDinner]);
   await reservation(d, 1, { time: '18:00' });
 
   const walkInDate = await date();
@@ -151,6 +156,72 @@ test('capacity: completed and no_show count; only cancellation releases, and wal
     throw error;
   }
   await reservation(walkInDate, 80);
+});
+
+test('capacity: 30-minute arrivals share places without releasing them by estimated duration or preparation', async () => {
+  const d = await date();
+  const first = await reservation(d, 10, { time: '19:00', status: 'seated' });
+  await reservation(d, 10, { time: '19:30', status: 'confirmed' });
+  await reservation(d, 10, { time: '20:00' });
+  await reservation(d, 50, { time: '20:30' });
+  const before = await db.query("select * from get_reservation_capacity_availability($1,$1) where commercial_turn='dinner'", [d]);
+  assert.ok(before.rows.length > 0);
+  assert.ok(before.rows.every((slot) => slot.occupied_guests === 80));
+  await assert.rejects(reservation(d, 1, { time: '21:00' }), /CAPACITY_EXCEEDED/);
+  await db.query("select * from transition_reservation_status($1,array['seated'],'completed')", [first]);
+  const after = await db.query("select * from get_reservation_capacity_availability($1,$1) where commercial_turn='dinner'", [d]);
+  assert.ok(after.rows.every((slot) => slot.occupied_guests === 70));
+  await reservation(d, 10, { time: '21:00' });
+});
+
+test('capacity: legacy active statuses count and legacy completed status does not', async () => {
+  const d = await date();
+  await reservation(d, 80, { status: 'concluido' });
+  await reservation(d, 40, { status: 'pendente' });
+  await reservation(d, 40, { status: 'confirmado' });
+  await assert.rejects(reservation(d, 1), /CAPACITY_EXCEEDED/);
+  const result = await db.query("select * from get_reservation_capacity_availability($1,$1) where commercial_turn='lunch'", [d]);
+  assert.ok(result.rows.length > 0);
+  assert.ok(result.rows.every((slot) => slot.occupied_guests === 80));
+});
+
+test('capacity: a concurrent arrival waits for registered departure and cannot exceed the freed places', async () => {
+  const d = await date();
+  const departing = await reservation(d, 20, { time: '18:00', status: 'seated' });
+  await reservation(d, 60, { time: '18:00' });
+  const nextId = randomUUID();
+  reservationIds.push(nextId);
+  const first = new pg.Client(config), second = new pg.Client(config);
+  await Promise.all([first.connect(), second.connect()]);
+  try {
+    await Promise.all([first.query('begin'), second.query('begin')]);
+    const firstPid = (await first.query('select pg_backend_pid() pid')).rows[0].pid;
+    const secondPid = (await second.query('select pg_backend_pid() pid')).rows[0].pid;
+    await first.query("select * from transition_reservation_status($1,array['seated'],'completed')", [departing]);
+    const pending = second.query(
+      `insert into reservations(id,name,whatsapp,reservation_date,reservation_time,num_guests,status,source,cpf)
+       values($1,'Concurrent arrival',$2,$3,'18:30',20,'pending','website','52998224725') returning id`,
+      [nextId, nextId, d],
+    ).then((result) => ({ result }), (error) => ({ error }));
+    let blocked = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if ((await db.query('select $1::int=any(pg_blocking_pids($2)) blocked', [firstPid, secondPid])).rows[0].blocked) { blocked = true; break; }
+      await delay(20);
+    }
+    assert.ok(blocked, 'capacity must serialize departure and arrival');
+    await first.query('commit');
+    const arrival = await pending;
+    await second.query(arrival.error ? 'rollback' : 'commit');
+    assert.equal(arrival.error, undefined);
+    assert.equal(arrival.result.rowCount, 1);
+    const capacity = await db.query("select * from get_reservation_capacity_availability($1,$1) where commercial_turn='dinner'", [d]);
+    assert.ok(capacity.rows.length > 0);
+    assert.ok(capacity.rows.every((slot) => slot.occupied_guests === 80));
+    await assert.rejects(reservation(d, 1, { time: '19:00' }), /CAPACITY_EXCEEDED/);
+  } finally {
+    await Promise.all([first.query('rollback'), second.query('rollback')]);
+    await Promise.all([first.end(), second.end()]);
+  }
 });
 
 test('turn identity: multiple lunch slots share a quota; schedule edits retain historical commercial identity', async () => {

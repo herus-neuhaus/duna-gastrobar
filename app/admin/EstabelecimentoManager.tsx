@@ -130,7 +130,7 @@ export default function EstabelecimentoManager() {
       ] as const).map(([valor, label]) => <Button key={valor} type="button" variant={aba === valor ? 'primary' : 'secondary'} size="sm" aria-pressed={aba === valor} onClick={() => setAba(valor)}>{label}</Button>)}</nav>
     </Card>
 
-    {aba === 'reservas' && <Feedback tone="info">Configure a primeira e a última entrada, não o fechamento da casa. A permanência precisa caber no funcionamento; o tempo de preparação da mesa pode terminar depois. Os turnos atuais de almoço e jantar continuam compartilhando suas respectivas cotas.</Feedback>}
+    {aba === 'reservas' && <Feedback tone="info">Configure cada dia e turno separadamente. O intervalo de 30 minutos espaça as entradas, não limita a duração do atendimento. A permanência prevista precisa caber no funcionamento; a preparação da mesa pode terminar depois. Os 80 lugares por turno consideram pessoas com reservas ativas e só são liberados ao concluir, cancelar ou registrar não comparecimento, nunca automaticamente pelo tempo previsto.</Feedback>}
     {aba === 'excecoes' && <Card className="space-y-4 p-5">
       <div><h3 className="flex items-center gap-2 font-bold"><CalendarDays size={18} /> Exceções de funcionamento</h3><p className="mt-1 text-sm text-[#4A3728]/65">Substituem o funcionamento semanal naquela data. Bloqueios de reservas e taxas de eventos continuam nas telas próprias.</p></div>
       <div className="flex flex-wrap items-end gap-3"><label className="text-xs font-medium">Data<Input type="date" value={novaData} onChange={(event) => setNovaData(event.target.value)} /></label><Button type="button" variant="secondary" disabled={!novaData || configuracao.dias.some((dia) => dia.data_excecao === novaData)} onClick={() => { editar((atual) => ({ ...atual, dias: [...atual.dias, { dia_semana: null, data_excecao: novaData, fechado: true, periodos: [], reservas: [] }] })); setNovaData(''); }}><Plus size={16} /> Adicionar data</Button></div>
@@ -154,7 +154,7 @@ export default function EstabelecimentoManager() {
               <label className="text-xs">Primeira entrada<Input type="time" value={janela.starts_at} onChange={(event) => editarReserva(indice, numero, { starts_at: event.target.value })} /></label>
               <label className="text-xs">Última entrada<Input type="time" value={janela.ends_at} onChange={(event) => editarReserva(indice, numero, { ends_at: event.target.value })} /></label>
               <label className="text-xs">Intervalo (min)<Input type="number" min={5} max={240} value={janela.slot_interval_minutes} onChange={(event) => editarReserva(indice, numero, { slot_interval_minutes: Number(event.target.value) })} /></label>
-              <label className="text-xs">Permanência (min)<Input type="number" min={30} max={480} value={janela.reservation_duration_minutes} onChange={(event) => editarReserva(indice, numero, { reservation_duration_minutes: Number(event.target.value) })} /></label>
+              <label className="text-xs">Permanência prevista (min)<Input type="number" min={30} max={480} value={janela.reservation_duration_minutes} onChange={(event) => editarReserva(indice, numero, { reservation_duration_minutes: Number(event.target.value) })} /></label>
               <label className="text-xs">Preparação (min)<Input type="number" min={0} max={120} value={janela.turnover_buffer_minutes} onChange={(event) => editarReserva(indice, numero, { turnover_buffer_minutes: Number(event.target.value) })} /></label>
             </div>
             <Button type="button" variant="danger" size="sm" className="mt-3" onClick={() => editarDia(indice, { reservas: dia.reservas.filter((_, i) => i !== numero) })}><Trash2 size={14} /> Remover janela</Button>
@@ -167,7 +167,7 @@ export default function EstabelecimentoManager() {
 
     <Card className="space-y-4 p-5">
       <div><h3 className="text-sm font-bold">Como aparece no site</h3>{resumirFuncionamento(configuracao.dias).map((texto) => <p key={texto} className="mt-1 text-sm text-[#4A3728]/70">{texto}</p>)}{!resumirFuncionamento(configuracao.dias).length && <p className="mt-1 text-sm">Fechado em todos os dias da semana.</p>}</div>
-      <p className="text-xs text-[#4A3728]/60">A madrugada é suportada no funcionamento. Janelas de reserva continuam dentro da mesma data civil. Fechar um dia bloqueia novas reservas, mas mantém as já cadastradas, com seus horários, mesas e decorações.</p>
+      <p className="text-xs text-[#4A3728]/60">Alterações de funcionamento e de janelas valem para novas reservas e reagendamentos. As reservas já cadastradas mantêm seus horários, mesas e decorações, mesmo que o horário seja removido. A madrugada é suportada no funcionamento; as entradas de reserva continuam na mesma data civil.</p>
     </Card>
     <div className="sticky bottom-0 z-10 space-y-3 rounded-2xl border border-[#D9CFC1] bg-[#FDFBF7] p-4 shadow-lg" aria-live="polite">
       {erro && <Feedback tone="error">{erro}</Feedback>}{sucesso && <Feedback tone="success">{sucesso}</Feedback>}

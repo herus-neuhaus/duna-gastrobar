@@ -10,6 +10,30 @@ function configuracao(): ConfiguracaoEstabelecimento {
 }
 
 describe('configuração do estabelecimento', () => {
+  it('aceita segunda somente no almoço e domingo somente no jantar, sem exigir pares de turnos', () => {
+    const config = configuracao();
+    config.dias[1] = {
+      dia_semana: 1, data_excecao: null, fechado: false,
+      periodos: [{ abre_as: '11:30', fecha_as: '15:30', encerra_dia_seguinte: false }],
+      reservas: [{ ...config.dias[2].reservas[0] }],
+    };
+    config.dias[0] = {
+      dia_semana: 0, data_excecao: null, fechado: false,
+      periodos: [{ abre_as: '18:00', fecha_as: '23:00', encerra_dia_seguinte: false }],
+      reservas: [{ ...config.dias[2].reservas[0], commercial_turn: 'dinner', starts_at: '18:00', ends_at: '21:00' }],
+    };
+    expect(validarConfiguracaoEstabelecimento(config)).toBeNull();
+  });
+
+  it('aceita permanência terminando no fechamento e preparação depois, inclusive com entrada única', () => {
+    const config = configuracao();
+    const dia = config.dias[2];
+    dia.periodos = [{ abre_as: '18:00', fecha_as: '22:00', encerra_dia_seguinte: false }];
+    dia.reservas = [{ ...dia.reservas[0], commercial_turn: 'dinner', starts_at: '21:00', ends_at: '21:00', reservation_duration_minutes: 60, turnover_buffer_minutes: 120 }];
+    expect(validarConfiguracaoEstabelecimento(config)).toBeNull();
+    dia.reservas[0].reservation_duration_minutes = 61;
+    expect(validarConfiguracaoEstabelecimento(config)).toContain('permanência');
+  });
   it('aceita semana completa e vários períodos sem exigir almoço/jantar no funcionamento', () => {
     const config = configuracao();
     config.dias[2].periodos = [{ abre_as: '08:00', fecha_as: '15:30', encerra_dia_seguinte: false }, { abre_as: '18:00', fecha_as: '23:00', encerra_dia_seguinte: false }];

@@ -29,8 +29,7 @@ export async function PUT(request: Request) {
   if (error) {
     if (error.message.includes('CONFIGURACAO_DESATUALIZADA')) return NextResponse.json({ error: 'Outra pessoa alterou a configuração. Recarregue antes de salvar.' }, { status: 409 });
     if (error.message.includes('AGENDA_CONFLITO_RESERVAS')) {
-      const quantidade = error.message.match(/AGENDA_CONFLITO_RESERVAS:(\d+)/)?.[1];
-      return NextResponse.json({ error: `A alteração conflita com ${quantidade || 'algumas'} reserva(s) futura(s). Revise os horários ou reagende essas reservas antes de salvar. Nenhuma alteração foi aplicada.` }, { status: 409 });
+      return NextResponse.json({ error: 'Existem reservas antigas sem contexto de agenda suficiente para preservar seus horários e mesas. Solicite a revisão desses registros. Nenhuma alteração foi aplicada.' }, { status: 409 });
     }
     if (error.message.includes('OWNER_REQUIRED')) return NextResponse.json({ error: 'Somente administradores podem alterar o funcionamento.' }, { status: 403 });
     const mensagem = error.message.includes('RESERVA_FORA_FUNCIONAMENTO') ? 'As reservas e sua permanência devem caber no funcionamento.'

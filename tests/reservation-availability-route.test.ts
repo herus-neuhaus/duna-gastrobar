@@ -50,6 +50,19 @@ describe('GET /api/reservations/availability', () => {
     expect(rpc).toHaveBeenCalledWith('get_reservation_capacity_availability', { p_from: '2026-09-09', p_to: '2026-09-19' });
   });
 
+  it('keeps successive 30-minute arrivals available while there are places for active guests', async () => {
+    const rpc = vi.fn(async () => ({ data: ['19:00:00', '19:30:00', '20:00:00'].map((time) => ({
+      reservation_date: '2026-09-10', reservation_time: time, service_starts_at: '18:00:00',
+      commercial_turn: 'dinner', occupied_guests: 10, has_unclassified_reservation: false,
+    })), error: null }));
+    mocks.createAdminClient.mockReturnValue({ from: () => dateQuery([]), rpc });
+    const response = await GET(new Request('http://localhost/api/reservations/availability?from=2026-09-10'));
+    await expect(response.json()).resolves.toMatchObject({
+      turnTotals: { '2026-09-10|dinner': 10 },
+      fullDates: [], availableTimes: { '2026-09-10': ['19:00', '19:30', '20:00'] },
+    });
+  });
+
   it('returns empty turn fields for a period entirely in the past', async () => {
     const response = await GET(new Request('http://localhost/api/reservations/availability?from=2000-01-01&to=2000-01-31'));
     expect(response.status).toBe(200);

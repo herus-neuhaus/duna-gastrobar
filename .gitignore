@@ -39,7 +39,16 @@ yarn-error.log*
 next-env.d.ts
 
 # Agents and Editor Config
-.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/supabase/
+!/.agents/skills/supabase-postgres-best-practices/
+/.opencode/*
+!/.opencode/agents/
+!/.opencode/skills/
+!/.opencode/README.md
+!/.opencode/validate.mjs
 .claude/
 .vscode/
 .idea/
@@ -48,7 +57,7 @@ next-env.d.ts
 
 # Project specific
 gen_hash.js
-skills-lock.json
+# skills-lock.json is intentionally versioned to preserve upstream provenance.
 metadata.json
 .local-db/
 supabase/.temp/

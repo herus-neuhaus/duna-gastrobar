@@ -138,14 +138,48 @@ test('funcionamento: madrugada e intervalos não se sobrepõem ao próximo dia',
   await assert.rejects(save(dias, 1), /PERIODOS_SOBREPOSTOS/);
 }));
 
-test('funcionamento: mudar início de período com decoração não libera identidade antiga', () => transaction(async () => {
+test('funcionamento: mudar início de período com decoração preserva a reserva e não libera a decoração', () => transaction(async () => {
   await owner();
   const dias = await config(), data = await date(), decoration = randomUUID();
   await db.query("insert into decorations(id,name,image_path,image_url) values($1::uuid,'Teste de agenda',$1::text,'https://example.invalid/agenda')", [decoration]);
-  await reservation(data, decoration);
+  const id = await reservation(data, decoration);
+  const area = randomUUID(), mesa = randomUUID();
+  await db.query("insert into restaurant_areas(id,name) values($1,'Preservação em dia aberto')", [area]);
+  await db.query('insert into restaurant_tables(id,area_id,code,min_capacity,max_capacity) values($1,$2,$3,1,8)', [mesa, area, `P-${mesa.slice(0, 8)}`]);
+  await db.query("update reservations set reservation_access_token_hash='token-local-preservado',payment_amount=100,payment_status='pending' where id=$1", [id]);
+  await db.query('select * from replace_reservation_table_assignments($1,$2::uuid[])', [id, [mesa]]);
+  const antes = (await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva;
+  const mesasAntes = (await db.query('select * from reservation_table_assignments where reservation_id=$1', [id])).rows;
+  const ocupacaoAntes = (await db.query('select * from get_reservation_occupancy_window($1)', [id])).rows;
   const janela = dias.find((dia) => dia.dia_semana === 2).reservas.find((item) => item.commercial_turn === 'lunch');
   janela.starts_at = '11:30';
+  await save(dias);
+  assert.deepEqual((await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva, antes);
+  assert.deepEqual((await db.query('select * from reservation_table_assignments where reservation_id=$1', [id])).rows, mesasAntes);
+  assert.deepEqual((await db.query('select * from get_reservation_occupancy_window($1)', [id])).rows, ocupacaoAntes);
+  const availability = await db.query("select available from get_reservation_decoration_availability($1,'11:30') where decoration_id=$2", [data, decoration]);
+  assert.equal(availability.rows[0].available, false);
+  await db.query('savepoint decoracao_preservada');
+  await assert.rejects(reservation(data, decoration), { code: '23505' });
+  await db.query('rollback to savepoint decoracao_preservada');
+  assert.equal((await db.query("select * from transition_reservation_status($1,array['pending'],'confirmed')", [id])).rows[0].status, 'confirmed');
+}));
+
+test('funcionamento: dados legados sem contexto não são inferidos ao alterar a agenda', () => transaction(async () => {
+  await owner();
+  const dias = await config(), data = await date();
+  const id = await reservation(data);
+  await db.query("set local session_replication_role='replica'");
+  await db.query('update reservations set duracao_reserva_minutos=null where id=$1', [id]);
+  await db.query("set local session_replication_role='origin'");
   await assert.rejects(save(dias), /AGENDA_CONFLITO_RESERVAS:1/);
+}));
+
+test('funcionamento: helper de decoração preservada não é uma API pública', () => transaction(async () => {
+  const assinatura = 'private.decoracao_conflita_com_reserva_preservada(date,time,text,time,uuid,integer,uuid)';
+  for (const role of ['anon', 'authenticated']) {
+    assert.equal((await db.query("select has_function_privilege($1,$2,'execute') permitido", [role, assinatura])).rows[0].permitido, false);
+  }
 }));
 
 test('funcionamento: mover janelas não perde registros ao reutilizar um horário antigo', () => transaction(async () => {
@@ -239,14 +273,62 @@ test('funcionamento: fechar domingo mantém mesas, decoração, token e edição
   await db.query('rollback to savepoint reagendar_fechado');
 }));
 
-test('funcionamento: dia aberto ainda rejeita alteração que invalide uma reserva', () => transaction(async () => {
+test('funcionamento: dia aberto permite remover almoço sem alterar a reserva e bloqueia novas entradas no horário antigo', () => transaction(async () => {
   await owner();
   const dias = await config(), data = await date();
-  await reservation(data);
+  const id = await reservation(data);
+  const antes = (await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva;
   const terca = dias.find((dia) => dia.dia_semana === 2);
   terca.periodos[0].abre_as = '18:00';
   terca.reservas = terca.reservas.filter((janela) => janela.commercial_turn === 'dinner');
-  await assert.rejects(save(dias), /AGENDA_CONFLITO_RESERVAS:1/);
+  assert.equal(await save(dias), 1);
+  assert.deepEqual((await db.query('select to_jsonb(r) reserva from reservations r where id=$1', [id])).rows[0].reserva, antes);
+  assert.equal((await db.query("select reservation_time_is_available($1,'12:00') disponivel", [data])).rows[0].disponivel, false);
+  await db.query('savepoint entrada_removida');
+  await assert.rejects(reservation(data), /RESERVATION_TIME_UNAVAILABLE/);
+  await db.query('rollback to savepoint entrada_removida');
+  await db.query('savepoint reagendar_removido');
+  await assert.rejects(db.query("update reservations set reservation_time='12:30' where id=$1", [id]), /RESERVATION_TIME_UNAVAILABLE/);
+  await db.query('rollback to savepoint reagendar_removido');
+  assert.equal((await db.query("select * from transition_reservation_status($1,array['pending'],'confirmed')", [id])).rows[0].status, 'confirmed');
+  assert.equal((await db.query("select * from transition_reservation_status($1,array['confirmed'],'seated')", [id])).rows[0].status, 'seated');
+  assert.equal((await db.query("select * from transition_reservation_status($1,array['seated'],'completed')", [id])).rows[0].status, 'completed');
+}));
+
+test('funcionamento: segunda só almoço e domingo só jantar salvam sem exigir o outro turno', () => transaction(async () => {
+  await owner();
+  const dias = await config();
+  const modelo = dias.find((dia) => dia.dia_semana === 2);
+  const segunda = dias.find((dia) => dia.dia_semana === 1);
+  segunda.fechado = false;
+  segunda.periodos = [{ abre_as: '11:30', fecha_as: '15:30', encerra_dia_seguinte: false }];
+  segunda.reservas = modelo.reservas.filter((janela) => janela.commercial_turn === 'lunch').map(({ id, ...janela }) => janela);
+  const domingo = dias.find((dia) => dia.dia_semana === 0);
+  domingo.periodos = [{ abre_as: '18:00', fecha_as: '23:00', encerra_dia_seguinte: false }];
+  domingo.reservas = domingo.reservas.filter((janela) => janela.commercial_turn === 'dinner');
+  assert.equal(await save(dias), 1);
+  const monday = (await db.query("select (current_date+365+((1-extract(dow from current_date+365)::int+7)%7))::text d")).rows[0].d;
+  const sunday = (await db.query("select (current_date+365+((0-extract(dow from current_date+365)::int+7)%7))::text d")).rows[0].d;
+  for (const [day, allowed, forbidden] of [[monday, '12:00', '18:00'], [sunday, '18:00', '12:00']]) {
+    assert.equal((await db.query('select reservation_time_is_available($1,$2) disponivel', [day, allowed])).rows[0].disponivel, true);
+    assert.equal((await db.query('select reservation_time_is_available($1,$2) disponivel', [day, forbidden])).rows[0].disponivel, false);
+  }
+}));
+
+test('funcionamento: permanência cabe no fechamento e preparação pode terminar depois', () => transaction(async () => {
+  await owner();
+  const dias = await config();
+  const terca = dias.find((dia) => dia.dia_semana === 2);
+  terca.periodos = [{ abre_as: '18:00', fecha_as: '22:00', encerra_dia_seguinte: false }];
+  terca.reservas = [{ starts_at: '19:00', ends_at: '21:00', commercial_turn: 'dinner', slot_interval_minutes: 30, reservation_duration_minutes: 60, turnover_buffer_minutes: 120 }];
+  assert.equal(await save(dias), 1);
+  const data = await date();
+  assert.deepEqual((await db.query('select reservation_time from get_reservation_available_times($1,$1)', [data])).rows.map((row) => row.reservation_time), ['19:00:00', '19:30:00', '20:00:00', '20:30:00', '21:00:00']);
+  terca.reservas[0].reservation_duration_minutes = 61;
+  await db.query('savepoint fora_funcionamento');
+  await assert.rejects(save(dias, 1), /RESERVA_FORA_FUNCIONAMENTO/);
+  await db.query('rollback to savepoint fora_funcionamento');
+  assert.equal((await db.query('select versao from configuracoes_estabelecimento')).rows[0].versao, 1);
 }));
 
 test('funcionamento: exceção de capacidade de reserva preservada usa o turno original', () => transaction(async () => {
