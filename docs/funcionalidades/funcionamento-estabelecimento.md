@@ -35,7 +35,9 @@ RPC transacional, controle de versão e auditoria imutável.
 `get_reservation_available_times` e `reservation_time_is_available` consultam o
 mesmo funcionamento efetivo. A reserva pública, criação interna e operação do
 dia usam as RPCs existentes. O site busca o horário publicado pela API; o painel
-oferece horários da agenda também para datas além do limite público de dez dias.
+oferece horários da agenda também além do limite público. Na implementação local
+atual, esse limite é hoje +60 dias; ver [reservas](reservas-e-mesas.md) para a
+mudança aprovada e sua situação de implantação.
 
 O salvamento é serializado com criação/reagendamento. Alterar ou remover horários,
 inclusive em dias que continuam abertos, bloqueia novas reservas nesses horários,

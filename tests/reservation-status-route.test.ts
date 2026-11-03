@@ -98,6 +98,42 @@ describe('reservation access and status routes', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Uma das mesas não está disponível para o novo horário.' });
   });
 
+  it.each([['2026-09-09', 200], ['2026-11-08', 200], ['2026-11-09', 400], ['2026-09-08', 400]] as const)(
+    'enforces today through day +60 for public rescheduling: %s', async (date, status) => {
+      const rpc = vi.fn(async () => ({ data: [{ id: 'reservation-id' }], error: null }));
+      mocks.createAdminClient.mockReturnValue({ rpc });
+      const response = await PATCH(new Request('http://localhost/api/reservations/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'update_details', accessToken, date, time: '18:00', guests: 2 }),
+      }), { params: Promise.resolve({ id: '11111111-1111-4111-8111-111111111111' }) });
+      expect(response.status).toBe(status);
+      if (status === 200) {
+        expect(rpc).toHaveBeenCalledWith('update_reservation_with_access_token', expect.objectContaining({ p_reservation_date: date }));
+      } else {
+        expect(rpc).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it('does not turn a valid date into authorization to update without a token', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const response = await PATCH(new Request('http://localhost/api/reservations/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH', body: JSON.stringify({ action: 'update_details', date: '2026-11-08', time: '18:00', guests: 2 }),
+    }), { params: Promise.resolve({ id: '11111111-1111-4111-8111-111111111111' }) });
+    expect(response.status).toBe(401);
+    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+  });
+
+  it('keeps the database lead-time rejection as an unavailable public rescheduling conflict', async () => {
+    const rpc = vi.fn(async () => ({ data: null, error: { message: 'RESERVATION_LEAD_TIME_NOT_MET' } }));
+    mocks.createAdminClient.mockReturnValue({ rpc });
+    const response = await PATCH(new Request('http://localhost/api/reservations/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH', body: JSON.stringify({ action: 'update_details', accessToken, date: '2026-09-09', time: '09:00', guests: 2 }),
+    }), { params: Promise.resolve({ id: '11111111-1111-4111-8111-111111111111' }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'Data ou horário indisponível para alteração.' });
+  });
+
   it('routes explicit capacity changes through the current-user audited override RPC', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-09T12:00:00Z'));

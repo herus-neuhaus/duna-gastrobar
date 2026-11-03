@@ -4,17 +4,23 @@
 
 1. `app/page.tsx` pede `/api/reservations/availability` para a data/calendário.
 2. O handler limita a janela pública e consulta a RPC de disponibilidade, além de datas especiais e bloqueadas.
-3. A tela consulta `/api/decorations` para decoração ativa e disponibilidade da data/horário.
-4. `POST /api/reservations` recebe os dados e delega ao banco as regras que precisam ser atômicas (capacidade/agenda), cria reserva e credencial de acesso.
+   O formulário apresenta calendário em grade; selecionar data libera pessoas
+   (e evento, quando existir), e selecionar quantidade libera os horários que
+   comportam o grupo. Alterar data/evento/quantidade limpa escolhas dependentes,
+   sem apagar o contato. O progresso inclui Pagamento apenas quando há cobrança.
+3. `PublicReservationForm` separa escolhas da reserva de dados de contato. A segunda etapa contém resumo editável, nome/telefone, CPF apenas se houver pagamento e decoração/observações opcionais. A tela consulta `/api/decorations` para decoração ativa e disponibilidade da data/horário.
+4. Somente a ação final envia `POST /api/reservations`; continuar/voltar/editar não gravam reservas. O handler calcula pagamento pelo número efetivo de pessoas/evento, valida CPF quando necessário e delega ao banco as regras atômicas de capacidade/agenda. Cria reserva e credencial de acesso. A ausência de CPF em reserva gratuita depende da migration `20261029234421_cpf_apenas_reservas_com_pagamento.sql`, aplicada no Duna em 03/11/2026 como versão remota `20261103194610`. A antecedência de duas horas também foi aplicada; ver [implantação](../implantacao-reservas-2026-11-03.md). Isso não publica a aplicação nem implementa a cobrança na edição de quantidade.
 5. Se existir taxa pendente, a tela chama `POST /api/payments/pix`; a ordem é criada no Pagar.me e os dados retornam à tela.
-6. Em pagamentos confirmados, o webhook valida a ordem diretamente no provedor, grava pagamento e chama `complete_reservation_payment`.
+6. Em pagamentos confirmados, o webhook valida a ordem diretamente no provedor e usa `lib/reservation-payment-persistence.ts` para gravar sem rebaixar estado pago e chamar `complete_reservation_payment`. Reentrega da mesma ordem/valor retorna 200 sem regravar status pago; falha parcial continua exigindo retry. A geração PIX usa a mesma persistência, não reescreve `pending` na reserva e também conclui a confirmação se o provedor já retornar `paid`. Correção apenas local, sem deploy; ver [financeiro](pagamentos-e-financeiro.md).
+7. A tela de resultado mantém o resumo e consulta o estado por token (cinco segundos, até 30 minutos), sem inferir confirmação pelo QR Code. Falha ao gerar PIX mantém a reserva existente. WhatsApp só abre quando o cliente escolhe entrar em contato.
 
 Referências: `app/page.tsx`, `app/api/reservations/route.ts`, `app/api/reservations/availability/route.ts`, `app/api/decorations/route.ts`, `app/api/payments/pix/route.ts`, `app/api/pagarme/webhook/route.ts`.
 
 ## Acesso do cliente às reservas
 
 - O token aleatório é entregue ao cliente, enquanto o sistema armazena o hash. Leitura/alteração/cancelamento requer token Bearer e RPCs de acesso; a API pública não deve confiar no ID isolado.
-- A recuperação começa por e-mail e código, com HMAC e desafio persistidos no banco. Após validação, o sistema emite nova credencial.
+- O endpoint legado de recuperação por e-mail/código permanece disponível, com HMAC e desafio persistidos no banco. Não é mais exibido na aba pública “Minhas reservas”.
+- “Minhas reservas” consulta por telefone somente as credenciais salvas neste navegador, mantendo o token nas requisições. A tela oferece um botão de WhatsApp para atendimento quando não houver acesso local, resultado ou disponibilidade da consulta. Informar telefone não concede acesso a reservas de terceiros; não foi criada autenticação nova por telefone.
 - Código: `lib/reservation-access.ts`, `lib/reservation-recovery.ts`, `app/api/reservations/[id]/route.ts`, `app/api/reservations/recovery/route.ts` e migrations de operações/estabilização.
 
 ## Operação do dia

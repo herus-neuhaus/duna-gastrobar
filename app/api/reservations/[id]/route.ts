@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { isPanelStaff } from '@/lib/auth';
+import { getPublicReservationDateRange } from '@/lib/public-reservation-form';
 import { getBearerReservationAccessToken, hashReservationAccessToken, isReservationAccessToken } from '@/lib/reservation-access';
 
 function isUuid(value: string) {
@@ -66,10 +67,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         return NextResponse.json({ error: 'Dados da reserva inválidos.' }, { status: 400 });
       }
       if (isPublicUpdate) {
-        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
-        const lastAvailableDate = new Date(`${today}T00:00:00Z`);
-        lastAvailableDate.setUTCDate(lastAvailableDate.getUTCDate() + 10);
-        if (reservationDate < today || reservationDate > lastAvailableDate.toISOString().slice(0, 10)) {
+        const { today, lastDate } = getPublicReservationDateRange();
+        if (reservationDate < today || reservationDate > lastDate) {
           return NextResponse.json({ error: 'Data ou horário indisponível para alteração.' }, { status: 400 });
         }
       }

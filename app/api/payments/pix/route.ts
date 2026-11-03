@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isValidCpf, pagarmeRequest } from '@/lib/pagarme';
 import { hashReservationAccessToken, isReservationAccessToken } from '@/lib/reservation-access';
+import { persistReservationPayment } from '@/lib/reservation-payment-persistence';
 
 export const runtime = 'nodejs';
 
@@ -105,33 +106,41 @@ export async function POST(request: Request) {
       }),
     });
 
+    if (order.amount !== Math.round(paymentAmount * 100)) {
+      throw new Error('O valor do pedido PIX não corresponde ao pagamento da reserva.');
+    }
+
     const transaction = order.charges?.[0]?.last_transaction;
+    if (order.status === 'paid') {
+      await persistReservationPayment(supabase, {
+        reservationId: reservation.id,
+        orderId: order.id,
+        amount: paymentAmount,
+        status: 'paid',
+        expiresAt: transaction?.expires_at || null,
+      });
+      return NextResponse.json({ error: 'Esta reserva já está paga.' }, { status: 409 });
+    }
     if (!transaction?.qr_code) {
       throw new Error('O Pagar.me não retornou os dados do QR Code PIX.');
     }
 
-    const { error: paymentError } = await supabase
-      .from('reservation_payments')
-      .upsert({
-        reservation_id: reservation.id,
-        provider: 'pagarme',
-        provider_order_id: order.id,
-        method: 'pix',
-        status: order.status === 'paid' ? 'paid' : 'pending',
-        amount: paymentAmount,
-        expires_at: transaction.expires_at || null,
-        paid_at: order.status === 'paid' ? new Date().toISOString() : null,
-      }, { onConflict: 'provider,provider_order_id' });
-    if (paymentError) throw paymentError;
+    await persistReservationPayment(supabase, {
+      reservationId: reservation.id,
+      orderId: order.id,
+      amount: paymentAmount,
+      status: 'pending',
+      expiresAt: transaction.expires_at || null,
+    });
 
     const { error: updateError } = await supabase
       .from('reservations')
       .update({
         cpf,
-        payment_status: 'pending',
         expires_at: transaction.expires_at || null,
       })
-      .eq('id', reservation.id);
+      .eq('id', reservation.id)
+      .eq('payment_status', 'pending');
     if (updateError) throw updateError;
 
     return NextResponse.json({

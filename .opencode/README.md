@@ -1,130 +1,135 @@
 # Desenvolvimento assistido por IA — Duna
 
-`AGENTS.md` fornece o contexto permanente. Agentes ficam em `agents/` e as seis
-skills autorais em `skills/`. As duas skills Supabase permanecem intactas em
-`.agents/skills/`, com origem no `skills-lock.json` existente. São **oito skills
-de projeto**; skills nativas como `opencode` e `report` não entram nessa contagem.
+`AGENTS.md` fornece o contexto permanente. O projeto usa os agentes nativos do
+OpenCode: **Plan** (`plan`) e **Build** (`build`). Não há perfis personalizados
+nem substituições dos prompts nativos. Apenas as permissões do Build são
+ajustadas em `opencode.jsonc` para acessar o MCP do Duna.
 
-## Uso e fluxo
+## Uso e skills
 
-Novas sessões usam `duna-orchestrator`; sessões existentes preservam a seleção.
-Selecione o agente na interface do OpenCode ou peça ao orquestrador uma tarefa:
+Novas sessões usam **Build**. **Plan** serve para investigar e planejar, e
+**Build** implementa o escopo aprovado. Sessões existentes preservam sua seleção:
+se ainda mostrarem um perfil removido, selecione Build ou Plan manualmente.
+OpenCode recarrega a configuração ao salvar; `/reload` força a atualização.
 
-- “Analise o fluxo de lista de espera; proponha critérios antes de implementar.”
-- “Use duna-ui-ux para auditar a densidade do financeiro, sem alterar regras.”
-- “Implemente a correção aprovada e peça revisão independente.”
+As seis skills autorais em `skills/` e duas upstream em `.agents/skills/`
+permanecem intactas, carregadas somente quando pertinentes. Skills não são
+agentes e não precisam ser removidas para usar os perfis nativos.
 
-Mudanças relevantes: **Produto → UI/UX → Engenharia → Qualidade**. UI/UX é
-dispensável para mudanças sem interface; correções pequenas podem ir diretamente
-a engenharia e revisão proporcional. O orquestrador não aciona todos por padrão.
-Só ele pode delegar, exclusivamente aos quatro especialistas Duna. Especialistas
-têm modo `all` para uso direto ou delegado, sem delegação recursiva.
-O sexto perfil, `duna-database`, é um agente `primary` selecionado diretamente
-pelo usuário. Não faz parte da lista de delegação: acesso remoto não é herdado
-nem acionado automaticamente pelo orquestrador.
+Para mudanças relevantes, esclareça critérios, planeje a experiência se houver
+UI, implemente o aprovado e peça revisão independente em outra sessão ou por
+outra pessoa. Autoinspeção não a substitui. Não há fluxo obrigatório entre seis
+especialistas nem delegação automática.
 
-| Agente | Skills de projeto permitidas | Edição/shell |
-|---|---|---|
-| Orchestrator | Produto | Sem edição/shell; também pode carregar a skill nativa `opencode` |
-| Product | Produto | Somente leitura |
-| UI/UX | UI/UX; produto se houver ambiguidade | Somente leitura |
-| Engineering | Frontend, backend, dados e duas Supabase | Edição local; shell sob aprovação, salvo inspeções Git exatas |
-| Quality/security | QA, produto, UI/UX, dados e duas Supabase | Sem ferramenta de edição; inspeções Git e verificações enumeradas, testes sob aprovação |
-| Database | Dados, produto e duas Supabase | Metadados via MCP; SQL/migrations/logs sob aprovação; edição restrita de SQL/testes/documentação sob aprovação; sem shell arbitrário |
+O modelo padrão continua `openai/gpt-6.1-sol` com `reasoningEffort: high`.
+Não foram alterados provedores, configuração global ou autenticação.
 
-As descrições são anunciadas conforme permissões; os corpos são carregados pelo
-tool `skill` somente quando a tarefa exigir. Não há `instructions` incluindo
-todas as skills nem importação de caches Codex.
+## Permissões configuradas
 
-## Modelo e segurança
+As permissões da raiz mantêm MCP/Code Mode bloqueados por padrão. Somente
+`agents.build.permissions` libera Code Mode e a allowlist nominal de
+`supabase_duna`; Plan, General e Explore continuam sem esse acesso:
 
-Modelo/variante confirmados no catálogo durante a implementação:
-`openai/gpt-6.1-sol#high`. Os agentes usam essa referência; o padrão do projeto
-é o mesmo modelo, com `reasoningEffort: high`, pois o default raiz V2 não retém
-`#variant`. Seleção já gravada em uma sessão tem precedência sobre o default.
+| Operação | Regra local preservada |
+|---|---|
+| Edição e shell, inclusive inspeções Git | ask (Plan mantém suas restrições nativas) |
+| Diretório externo | ask |
+| Delegação | deny |
+| Code Mode (`execute`) | allow somente no Build; deny nos demais |
+| Metadados `supabase_duna` enumerados abaixo | allow somente no Build |
+| SQL, migrations, logs, tipos e Storage/Functions enumerados abaixo | ask somente no Build |
+| Conexão antiga `supabase`, outros nomes `supabase_*` e novas ferramentas | deny |
+| Chaves/secrets, projetos, organizações e branches | deny |
+| Credenciais, `.env`, PEM/SSH, escrita direta em `.git` e skills upstream | bloqueios existentes preservados |
+| Git push/reset/clean/checkout destrutivo | deny |
 
-A configuração de servidor Supabase global não é reescrita nem duplicada aqui.
-As permissões **locais** negam Code Mode (`execute`) e Supabase por padrão,
-inclusive para agentes genéricos. Os cinco perfis anteriores continuam sem
-execução Supabase; apenas `duna-database` permite o wrapper `execute` e as
-ferramentas enumeradas. Permissões aninhadas continuam sendo verificadas.
+A exceção de inspeções Git sem aprovação existia nos perfis removidos, não na
+raiz. Edição e shell continuam sob aprovação.
 
-A policy ampla `supabase_*` permanece negada, com exceções nominais para as
-ferramentas usadas pelo executor. Essas exceções de policy **não concedem acesso**:
-apenas deixam a permissão do agente decidir. A allowlist do novo perfil permite:
+### Conexão e allowlist do Build
 
-- Metadados: URL/identidade do projeto, migrations, tabelas, extensões, advisors e
-  documentação, sem confirmação por chamada.
-- `execute_sql`, `apply_migration`, logs e geração de tipos: **ask**, exigindo
-  aprovação. SQL de leitura também pede aprovação, pois `execute_sql` não separa
-  SELECT de escrita. Não há liberação automática permanente.
-- Ferramentas de criação/exclusão/reset/merge/rebase de branches, publicação de
-  funções, alteração de Storage e obtenção de chaves: negadas. Ferramentas novas
-  não enumeradas também permanecem negadas.
+A conexão usa a entrada global já existente **`supabase_duna`**, limitada ao
+projeto **`gnakcuvfxltbgpssirpv`**. Não foi criado outro servidor ou alterado OAuth.
+Todas as ferramentas enumeradas abaixo usam o prefixo `supabase_duna_`:
 
-O escopo da conexão continua definido pelo MCP existente. O agente deve confirmar
-o projeto antes de escrever; a permissão de tool não restringe seu argumento SQL
-nem constitui isolamento entre ambientes. SQL e migrations podem ser destrutivos,
-por isso exigem revisão do conteúdo e aprovação por operação. Políticas globais
-ou gerenciadas de negação não podem ser superadas pelo perfil do projeto.
+- **allow:** `get_project_url`, `list_migrations`, `list_tables`,
+  `list_extensions`, `get_advisors`, `search_docs`.
+- **ask:** `execute_sql` (inclusive SELECT), `apply_migration`, `get_logs`,
+  `query_logs`, `generate_typescript_types`.
+- **Storage/Functions — ask, inclusive leituras:** `list_edge_functions`,
+  `get_edge_function`, `deploy_edge_function`, `list_storage_buckets`,
+  `get_storage_config`, `update_storage_config`.
 
-Produto/UI/orquestração não têm shell nem edição. Engenharia não tem aprovação
-automática de comandos arbitrários; QA só pode pedir os comandos enumerados.
-Credenciais, `.env`, material SSH e mutações diretas de `.git`/skills upstream
-têm bloqueios adicionais. As permissões não são um sandbox de SO: shell aprovado
-e testes executam código com privilégios do usuário e podem escrever artefatos ou
-acessar rede. Revise comandos/scripts antes de aprovar; não use “permitir sempre”
-para interpretadores genéricos. Não contorne negativas com shell ou outra ferramenta.
+`get_logs` é uma exceção nominal de compatibilidade, não prova de disponibilidade.
+Recursos MCP genéricos continuam negados no Build; não são uma rota alternativa.
 
-Implantação, cobranças e alterações remotas exigem tarefa/autorização separadas,
-não apenas uma frase do agente. Aprovações não superam políticas de negação.
+Para usar, selecione **Build** dentro deste projeto. Se a sessão ainda não
+mostrar as ferramentas, use `/reload` e confira `supabase_duna` em `/mcps`.
+Confirme o alvo antes de consultar dados ou alterar o projeto:
 
-## Como usar o analista de dados/banco
+```js
+await tools.supabase_duna.get_project_url()
+// Esperado: https://gnakcuvfxltbgpssirpv.supabase.co
+```
 
-1. Selecione **duna-database** no seletor de agentes do OpenCode. Se ainda não
-   aparecer, recarregue o projeto/sessão para atualizar a descoberta. A seleção
-   de uma sessão existente não muda automaticamente ao criar o arquivo.
-2. Para análise, peça, por exemplo: “Confira o projeto conectado, o catálogo e as
-   precondições da migration, sem alterar dados”. Consultas SQL e logs ainda
-   exigirão aprovação das chamadas correspondentes.
-3. Para implantação, autorize explicitamente ambiente e arquivo/SQL após revisão
-   de impacto, testes disponíveis, backup recuperável e reversão. Aprove apenas
-   a chamada revisada, não “permitir sempre” para SQL ou todas as ferramentas.
-4. Ao terminar, retorne ao agente adequado à tarefa. Os outros perfis não recebem
-   acesso ao Supabase por ele ter sido usado nesta sessão.
+**Configurado não significa disponível ou operacional.** A chamada
+`supabase_duna.get_project_url` foi verificada e retornou o projeto esperado.
+A execução das demais ferramentas não foi verificada. Storage é
+desabilitado por padrão; Edge Functions geralmente vem habilitado. Estado de
+conexão `connected` não comprova catálogo ou capacidade operacional. Se uma tool
+estiver ausente, relate a limitação: não habilite grupos, altere MCP global/OAuth,
+instale componentes ou use shell/HTTP/SDK para contornar o bloqueio.
 
-Criar esse perfil **não aplica a migration pendente** e não promove a própria
-sessão atual. Não foram alterados OAuth, a configuração global do servidor,
-credenciais ou as skills upstream; não é necessária reinstalação do MCP.
+## Segurança e operação
 
-## Validação e manutenção
+A policy ampla `supabase_*` continua negando acesso, com exceções **nominais**
+somente para a allowlist `supabase_duna`. Uma exceção de policy não concede
+acesso: as permissions do Build ainda determinam `allow` ou `ask` por ferramenta.
+A conexão antiga `supabase` fica bloqueada neste projeto, sem afetar os demais.
+Policies globais/gerenciadas, proteções de `.env`, credenciais/PEM/SSH, `.git`,
+upstream e Git destrutivo não
+são relaxadas. `.env.example` segue legível, não editável.
 
-Com as dependências existentes do repositório disponíveis, execute:
+Leia comandos/scripts antes de aprovar. Shell e testes podem escrever artefatos
+e acessar rede com a autoridade do usuário; permissões não são sandbox.
+Não contorne edição negada nem leia credenciais. Prefira aprovação única,
+nunca “permitir sempre” para interpretadores ou operações remotas.
+
+A configuração não autoriza operação remota. Uma tarefa específica deve definir
+alvo/ambiente e conteúdo exato, impactos, precondições, backup recuperável,
+verificação e reversão antes da aprovação por operação. Storage exige revisão
+de acesso/RLS; Functions exige revisar código, dependências e autorização/JWT.
+Não use produção como sandbox. Esta manutenção não aplica migrations nem faz deploy.
+
+## Validação
+
+Execute sob aprovação:
 
 ```bash
 node .opencode/validate.mjs
 node .opencode/validate.mjs --runtime
+git diff --check
 ```
 
-O primeiro verifica arquivos, frontmatter, referências, versionabilidade e matriz
-de regras dos seis agentes localmente, incluindo a exclusividade do executor,
-aprovação obrigatória de SQL/migrations e negação de operações não enumeradas.
-Usa `yaml`, já presente no lockfile, sem instalar dependências.
-O segundo consulta somente GETs da API **local do OpenCode** para conferir parsing,
-descoberta e permissões registradas. A CLI pode iniciar o serviço OpenCode se ele
-não estiver rodando; não inicia a aplicação Duna nem chama ferramentas Supabase.
-Não imprime configuração global, credenciais ou conteúdo de sessões.
+O validador verifica Build como padrão, ausência de perfis personalizados e
+substituições de prompt/modelo, oito skills, referências e bloqueios da raiz.
+Verifica também a allowlist exata do Build: metadados permitidos, operações
+sensíveis sob aprovação, conexão antiga e ferramentas novas negadas. Usa `yaml`
+já disponível no lockfile, sem instalação.
 
-Os cenários de permissão são avaliações das regras registradas, não tentativas
-reais de editar, executar SQL ou invadir produção. Não comprovam sandbox de SO,
-comportamento do modelo ou integração E2E. Testes de aplicação/banco e QA visual
-dependem de tarefas próprias; as pendências históricas da auditoria não foram
-corrigidas nesta implementação. Para atualizar regras/skills, mantenha entradas
-curtas, referências válidas e revise a matriz; não altere o lockfile upstream para
-simular origem de skills autorais, nem copie regras comerciais para vários prompts.
+`--runtime` consulta somente GETs da API **local OpenCode** para perfis, skills,
+modelo, versão e estado da conexão MCP. Não consulta configuração global/sensível,
+não executa ferramentas MCP nem altera OAuth/servidor. A CLI pode iniciar o serviço
+OpenCode, não a stack Duna. Se a versão mudar, revise contrato e validador.
 
-Validação da inclusão de `duna-database`: 849 verificações locais e 1.691 no
-total com `--runtime`, confirmadas pelo OpenCode 2.1.1. O servidor reconheceu os
-seis perfis, o modo primary e a matriz de permissões, inclusive a negação de
-MCP/Code Mode nos agentes nativos build/plan/general/explore. Nenhuma ferramenta Supabase,
-migration ou escrita remota foi executada nessa validação.
+Parsing e matriz configurada não comprovam disponibilidade de tools, execução
+remota, integração E2E ou sandbox. Policies são avaliadas localmente; runtime
+confere presença de Plan/Build, ausência dos perfis removidos, regras registradas
+e registro da conexão `supabase_duna`, sem tentar operações bloqueadas.
+O contrato retornado é validado explicitamente
+em OpenCode V2; não há mais a comparação fixa com a antiga versão 2.1.4.
+
+O validador não executa ferramentas Supabase. A confirmação operacional mínima
+é feita separadamente pela chamada `supabase_duna.get_project_url`, sem SQL,
+consulta a dados de clientes ou alterações remotas. Uma resposta correta não
+comprova que todas as outras ferramentas estejam disponíveis ou operacionais.

@@ -223,20 +223,21 @@ test('synthetic payment: exact amount, confirmation and idempotent database tran
   assert.equal((await db.query('select * from complete_reservation_payment($1,100)', [id])).rowCount, 0);
 });
 
-test('reservation persistence allows a missing email but requires CPF for bookings', async () => {
+test('reservation persistence allows a missing email/CPF without payment but requires CPF for groups', async () => {
   const d = await date();
   const id = randomUUID();
   reservationIds.push(id);
   const saved = await db.query(
     `insert into reservations(id,name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source,cpf)
-     values ($1,'Optional email',null,'69912345678',$2,'12:00',2,'pending','website','52998224725') returning email`,
+      values ($1,'Optional email and CPF',null,'69912345678',$2,'12:00',14,'pending','website',null) returning email,cpf`,
     [id, d],
   );
   assert.equal(saved.rows[0].email, null);
+  assert.equal(saved.rows[0].cpf, null);
 
   await assert.rejects(db.query(
     `insert into reservations(name,email,whatsapp,reservation_date,reservation_time,num_guests,status,source)
-     values ('Missing CPF',null,'69912345679',$1,'12:00',2,'pending','website')`,
+      values ('Missing payment CPF',null,'69912345679',$1,'12:00',15,'pending','website')`,
     [d],
   ), /RESERVATION_CPF_REQUIRED/);
 });

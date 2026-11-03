@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { isPanelStaff } from '@/lib/auth';
 import { isValidCpf } from '@/lib/cpf';
+import { getReservationPayment } from '@/lib/reservation-payment';
+import { getPublicReservationDateRange, RESERVATION_MIN_LEAD_HOURS } from '@/lib/public-reservation-form';
 import { createReservationAccessToken, hashReservationAccessToken } from '@/lib/reservation-access';
 
 export const runtime = 'nodejs';
@@ -35,7 +37,7 @@ export async function POST(request: Request) {
     if (
       name.length < 2 || name.length > 120 ||
       (email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
-      !isValidCpf(cpf) ||
+      (cpf !== '' && !isValidCpf(cpf)) ||
       !/^\d{10,11}$/.test(normalizePhone(whatsapp)) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       !/^\d{2}:\d{2}$/.test(time) ||
@@ -46,17 +48,13 @@ export async function POST(request: Request) {
 
     const [year, month, day] = date.split('-').map(Number);
     const calendarDate = new Date(Date.UTC(year, month - 1, day));
-    const todayString = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
-    const [todayYear, todayMonth, todayDay] = todayString.split('-').map(Number);
-    const today = new Date(Date.UTC(todayYear, todayMonth - 1, todayDay));
-    const lastAvailableDate = new Date(today);
-    lastAvailableDate.setUTCDate(lastAvailableDate.getUTCDate() + 10);
+    const { today, lastDate } = getPublicReservationDateRange();
     if (
       calendarDate.getUTCFullYear() !== year ||
       calendarDate.getUTCMonth() !== month - 1 ||
       calendarDate.getUTCDate() !== day ||
-      calendarDate < today ||
-       (calendarDate > lastAvailableDate && !panelStaff)
+      date < today ||
+      (date > lastDate && !panelStaff)
     ) {
       return NextResponse.json({ error: 'Data ou horário indisponível.' }, { status: 400 });
     }
@@ -126,6 +124,14 @@ export async function POST(request: Request) {
 
     if (specialDate?.included_guests) guests = specialDate.included_guests;
 
+    const { required: requiresPayment, amount: paymentAmount } = getReservationPayment(guests, specialDate);
+    if (requiresPayment && !isValidCpf(cpf)) {
+      return NextResponse.json({ error: 'Informe um CPF válido para gerar o pagamento.', code: 'PAYMENT_CPF_REQUIRED' }, { status: 400 });
+    }
+    if (requiresPayment && (!Number.isFinite(paymentAmount) || paymentAmount <= 0)) {
+      return NextResponse.json({ error: 'Valor de pagamento inválido.' }, { status: 400 });
+    }
+
     // Compare only reservations with a classified commercial turn. Historical
     // rows without a turn cannot safely be matched to lunch or dinner.
     const { data: requestedTurn, error: requestedTurnError } = await supabase.rpc('get_reservation_commercial_turn', {
@@ -134,7 +140,7 @@ export async function POST(request: Request) {
     });
     if (requestedTurnError) throw requestedTurnError;
 
-    if (requestedTurn === 'lunch' || requestedTurn === 'dinner') {
+    if (cpf && (requestedTurn === 'lunch' || requestedTurn === 'dinner')) {
       const { data: sameCpfReservations, error: sameCpfReservationsError } = await supabase
         .from('reservations')
         .select('commercial_turn,reservation_time,num_guests,status')
@@ -160,14 +166,6 @@ export async function POST(request: Request) {
           },
         }, { status: 409 });
       }
-    }
-
-    const requiresGroupPayment = guests >= 15;
-    const requiresSpecialPayment = Boolean(specialDate?.requires_fee);
-    const requiresPayment = requiresGroupPayment || requiresSpecialPayment;
-    const paymentAmount = requiresSpecialPayment ? Number(specialDate?.fee_amount || 0) : requiresGroupPayment ? 100 : 0;
-    if (requiresPayment && paymentAmount <= 0) {
-      return NextResponse.json({ error: 'Valor de pagamento inválido.' }, { status: 400 });
     }
 
     const accessToken = createReservationAccessToken();
@@ -214,7 +212,7 @@ export async function POST(request: Request) {
           notes: notes || null,
           decoration_id: decorationId,
           special_date_id: specialDate?.id || null,
-          cpf,
+          cpf: cpf || null,
           status: 'pending',
           payment_status: requiresPayment ? 'pending' : 'not_required',
           payment_amount: paymentAmount,
@@ -252,7 +250,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Já existe uma reserva ativa para este WhatsApp nesta data.' }, { status: 409 });
     }
     if (errorMessage.includes('RESERVATION_LEAD_TIME_NOT_MET')) {
-      return NextResponse.json({ error: 'A reserva precisa ser feita com pelo menos 8 horas de antecedência.' }, { status: 400 });
+      return NextResponse.json({ error: `A reserva precisa ser feita com pelo menos ${RESERVATION_MIN_LEAD_HOURS} horas de antecedência.` }, { status: 400 });
     }
     return NextResponse.json({ error: 'Não foi possível criar a reserva.' }, { status: 500 });
   }

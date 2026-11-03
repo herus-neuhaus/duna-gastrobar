@@ -11,26 +11,27 @@ const require = createRequire(import.meta.url);
 const { parse } = require('yaml'); // Dependência já resolvida em package-lock.json.
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const config = JSON.parse(read('opencode.jsonc')); // JSON estrito também é JSONC.
-const names = ['duna-orchestrator', 'duna-product', 'duna-ui-ux',
-  'duna-engineering', 'duna-quality-security', 'duna-database'];
-const databaseAgent = 'duna-database';
-const delegated = names.filter((name) => !['duna-orchestrator', databaseAgent].includes(name));
-const metadataTools = ['supabase_get_project_url', 'supabase_list_migrations',
-  'supabase_list_tables', 'supabase_list_extensions', 'supabase_get_advisors', 'supabase_search_docs'];
-const approvedTools = ['supabase_get_logs', 'supabase_generate_typescript_types',
-  'supabase_execute_sql', 'supabase_apply_migration'];
+const names = ['build', 'plan'];
+const metadataTools = ['supabase_duna_get_project_url', 'supabase_duna_list_migrations',
+  'supabase_duna_list_tables', 'supabase_duna_list_extensions', 'supabase_duna_get_advisors', 'supabase_duna_search_docs'];
+// Nomes Storage/Functions e query_logs: seção Available tools da documentação oficial.
+// https://supabase.com/docs/guides/getting-started/mcp
+// Evidência nominal, não descoberta de catálogo nem confirmação operacional.
+const approvedTools = ['supabase_duna_get_logs', 'supabase_duna_query_logs', 'supabase_duna_generate_typescript_types',
+  'supabase_duna_execute_sql', 'supabase_duna_apply_migration', 'supabase_duna_list_edge_functions',
+  'supabase_duna_get_edge_function', 'supabase_duna_deploy_edge_function', 'supabase_duna_list_storage_buckets',
+  'supabase_duna_get_storage_config', 'supabase_duna_update_storage_config'];
+const deniedTools = ['supabase_duna_delete_branch', 'supabase_duna_reset_branch', 'supabase_duna_merge_branch',
+  'supabase_duna_rebase_branch', 'supabase_duna_create_branch', 'supabase_duna_get_publishable_keys',
+  'supabase_duna_get_api_keys', 'supabase_duna_create_edge_function_secret', 'supabase_duna_create_project',
+  'supabase_duna_delete_project', 'supabase_duna_pause_project', 'supabase_duna_restore_project',
+  'supabase_duna_list_projects', 'supabase_duna_list_organizations', 'supabase_duna_get_cost',
+  'supabase_duna_list_branches', 'supabase_duna_new_tool', 'supabase_duna_future_mutation'];
+const legacyTools = [...metadataTools, ...approvedTools, ...deniedTools]
+  .map((action) => action.replace('supabase_duna_', 'supabase_'));
 const skills = ['duna-product-rules', 'duna-ui-ux', 'duna-frontend',
   'duna-backend', 'duna-data-workflow', 'duna-quality-security'];
 const upstream = ['supabase', 'supabase-postgres-best-practices'];
-const expected = {
-  'duna-orchestrator': ['opencode', 'duna-product-rules'],
-  'duna-product': ['duna-product-rules'],
-  'duna-ui-ux': ['duna-ui-ux', 'duna-product-rules'],
-  'duna-engineering': ['duna-frontend', 'duna-backend', 'duna-data-workflow', ...upstream],
-  'duna-quality-security': ['duna-quality-security', 'duna-product-rules',
-    'duna-ui-ux', 'duna-data-workflow', ...upstream],
-  'duna-database': ['duna-data-workflow', 'duna-product-rules', ...upstream],
-};
 let checks = 0;
 function check(condition, label) {
   assert.ok(condition, label);
@@ -69,70 +70,65 @@ function effect(rules, action, resource) {
   }
   return policy === 'deny' ? 'deny' : result;
 }
-function permissions(agents, native = false) {
-  for (const name of names) {
-    const rules = native ? agents[name].permissions
-      : [{ action: '*', resource: '*', effect: 'allow' },
-        ...config.permissions, ...agents[name].permissions];
-    ruleset(rules);
-    const test = (action, resource, wanted) => check(effect(rules, action, resource) === wanted,
-      `${native ? 'Registrado' : 'Local'} ${name}: ${action}:${resource} => ${wanted}`);
-    test('read', 'app/page.tsx', 'allow');
-    test('read', '.env', 'deny');
-    test('read', '.env.local', 'deny');
-    test('read', '.env.example', 'allow');
-    test('read', '/home/example/.ssh/id_rsa', 'deny');
-    test('external_directory', '/outside/*', 'deny');
-    test('execute', '*', name === databaseAgent ? 'allow' : 'deny');
-    for (const action of metadataTools) test(action, '*', name === databaseAgent ? 'allow' : 'deny');
-    for (const action of approvedTools) test(action, '*', name === databaseAgent ? 'ask' : 'deny');
-    test('supabase_delete_branch', '*', 'deny');
-    test('supabase_reset_branch', '*', 'deny');
-    test('supabase_merge_branch', '*', 'deny');
-    test('supabase_rebase_branch', '*', 'deny');
-    test('supabase_create_branch', '*', 'deny');
-    test('supabase_deploy_edge_function', '*', 'deny');
-    test('supabase_update_storage_config', '*', 'deny');
-    test('supabase_get_publishable_keys', '*', 'deny');
-    test('supabase_future_mutation', '*', 'deny');
-    test('opencode_session_move', '*', 'deny');
-    test('shell', 'git push', 'deny');
-    test('shell', 'git status --short', ['duna-engineering', 'duna-quality-security', databaseAgent].includes(name) ? 'allow' : 'deny');
-    test('shell', 'git reset --hard', 'deny');
-    test('shell', 'git clean -fd', 'deny');
-    test('edit', '.git/config', 'deny');
-    test('edit', '.env.local', 'deny');
-    test('edit', '.agents/skills/supabase/SKILL.md', 'deny');
-    test('shell', 'npm run typecheck',
-      ['duna-engineering', 'duna-quality-security'].includes(name) ? 'ask' : 'deny');
-    test('shell', 'python3 -c "print(1)"', name === 'duna-engineering' ? 'ask' : 'deny');
-    test('shell', 'node .opencode/validate.mjs --runtime',
-      name === 'duna-engineering' ? 'ask' : 'deny');
-    test('edit', 'app/page.tsx', name === 'duna-engineering' ? 'allow' : 'deny');
-    for (const path of ['supabase/migrations/20990101000000_reviewed.sql',
-      'tests/database/reviewed.test.mjs', 'docs/funcionalidades/reservas-e-mesas.md']) {
-      test('edit', path, name === databaseAgent ? 'ask' : name === 'duna-engineering' ? 'allow' : 'deny');
-    }
-    test('edit', '.opencode/agents/duna-product.md', name === 'duna-engineering' ? 'ask' : 'deny');
-    for (const skill of [...skills, ...upstream, 'opencode', 'report']) {
-      test('skill', skill, expected[name].includes(skill) ? 'allow' : 'deny');
-    }
-    for (const child of [...names, 'general', 'explore']) {
-      test('subagent', child,
-        name === 'duna-orchestrator' && delegated.includes(child) ? 'allow' : 'deny');
-    }
+function permissions(rules, label, mcpAllowed = false) {
+  ruleset(rules);
+  const test = (action, resource, wanted) => check(effect(rules, action, resource) === wanted,
+    `${label}: ${action}:${resource} => ${wanted}`);
+  test('read', 'app/page.tsx', 'allow');
+  test('read', '.env', 'deny');
+  test('read', '.env.local', 'deny');
+  test('read', '.env.example', 'allow');
+  test('read', '/home/example/.ssh/id_rsa', 'deny');
+  test('read', 'private.pem', 'deny');
+  test('read', 'supabase/.env.local', 'deny');
+  test('external_directory', '/outside/*', 'ask');
+  test('execute', '*', mcpAllowed ? 'allow' : 'deny');
+  for (const action of metadataTools) test(action, '*', mcpAllowed ? 'allow' : 'deny');
+  for (const action of approvedTools) test(action, '*', mcpAllowed ? 'ask' : 'deny');
+  for (const action of [...deniedTools, ...legacyTools]) test(action, '*', 'deny');
+  for (const action of [...metadataTools, ...approvedTools]) test(`${action}_unlisted`, '*', 'deny');
+  test('supabase_outro_get_project_url', '*', 'deny');
+  if (mcpAllowed) {
+    test('opencode_list_mcp_resources', 'supabase_duna', 'deny');
+    test('opencode_list_mcp_resources', 'supabase', 'deny');
+    test('opencode_read_mcp_resource', 'supabase:example', 'deny');
+    test('opencode_read_mcp_resource', 'supabase_duna:example', 'deny');
   }
+  for (const command of ['git push', 'git push origin main', 'git reset --hard',
+    'git clean -fd', 'git checkout -- app/page.tsx']) test('shell', command, 'deny');
+  for (const command of ['git status --short', 'git diff --check', 'git diff --stat',
+    'git diff --name-only', 'git diff', 'npm test', 'npm run typecheck',
+    'npm run lint', 'node .opencode/validate.mjs --runtime']) test('shell', command, 'ask');
+  for (const path of ['.git/config', 'nested/.git/config', '.env.local',
+    '.agents/skills/supabase/SKILL.md', 'nested/.agents/skills/supabase/SKILL.md']) test('edit', path, 'deny');
+  // Plan pode ter uma negação nativa mais restrita que o ask da raiz.
+  check(['ask', 'deny'].includes(effect(rules, 'edit', 'app/page.tsx')), `${label}: edição sem auto-allow`);
+  for (const child of [...names, 'general', 'explore', 'future-agent']) test('subagent', child, 'deny');
 }
 
 check(config.$schema === 'https://opencode.ai/config.json', 'Schema configurado');
 check(config.model === 'openai/gpt-6.1-sol', 'Modelo confirmado');
 check(config.providers.openai.models['gpt-6.1-sol'].settings.reasoningEffort === 'high', 'High padrão');
-check(config.default_agent === names[0], 'Agente padrão');
+check(config.default_agent === 'build', 'Build nativo como agente padrão');
 check(!('mcp' in config) && !('skills' in config) && !('instructions' in config)
-  && !('plugins' in config) && !('agents' in config), 'Sem duplicação de fontes/MCP/prompts');
+  && !('plugins' in config), 'Sem duplicação de fontes/MCP/prompts');
 check(Object.keys(config).every((key) => ['$schema', 'model', 'default_agent',
-  'providers', 'permissions', 'policies'].includes(key)), 'Campos V2 esperados');
+  'providers', 'permissions', 'policies', 'agents'].includes(key)), 'Campos V2 esperados');
+assert.deepEqual(Object.keys(config.agents), ['build'], 'Somente permissões do Build nativo');
+assert.deepEqual(Object.keys(config.agents.build), ['permissions'], 'Sem substituir prompt/modelo do Build');
+ruleset(config.agents.build.permissions);
+assert.deepEqual(config.agents.build.permissions, [
+  { action: 'execute', resource: '*', effect: 'allow' },
+  { action: 'opencode_list_mcp_resources', resource: '*', effect: 'deny' },
+  { action: 'opencode_read_mcp_resource', resource: '*', effect: 'deny' },
+  ...metadataTools.map((action) => ({ action, resource: '*', effect: 'allow' })),
+  ...approvedTools.map((action) => ({ action, resource: '*', effect: 'ask' })),
+], 'Allowlist exata do supabase_duna, sem novas liberações amplas');
 ruleset(config.permissions);
+assert.deepEqual(config.policies.filter((rule) => rule.resource.startsWith('supabase_')
+  && rule.effect === 'allow').map((rule) => rule.resource).sort(),
+  [...metadataTools, ...approvedTools].map((action) => `${action}:*`).sort(),
+  'Policies Supabase estritamente nominais; sem novas exceções amplas');
 for (const action of ['execute', ...metadataTools, ...approvedTools]) {
   check(effect([{ action: '*', resource: '*', effect: 'allow' }, ...config.permissions], action, '*') === 'deny',
     `MCP/Code Mode negados por padrão fora do executor: ${action}`);
@@ -142,22 +138,12 @@ for (const rule of config.policies) {
     && ['allow', 'deny'].includes(rule.effect), 'Policy V2');
 }
 
-const agents = {};
-const agentFiles = readdirSync(resolve(root, '.opencode/agents')).filter((name) => name.endsWith('.md'));
-assert.deepEqual(agentFiles.sort(), names.map((name) => `${name}.md`).sort());
-for (const name of names) {
-  agents[name] = frontmatter(`.opencode/agents/${name}.md`);
-  const agent = agents[name];
-  check(Object.keys(agent).every((key) => ['description', 'mode', 'model', 'permissions', 'body'].includes(key)), 'Campos de agente V2');
-  check(agent.description?.length > 20 && agent.body.length > 200, `Instruções ${name}`);
-  check(agent.mode === ([names[0], databaseAgent].includes(name) ? 'primary' : 'all'), `Modo ${name}`);
-  check(agent.model === 'openai/gpt-6.1-sol#high', `Modelo/variante ${name}`);
-  check(agent.permissions[0].action === '*' && agent.permissions[0].effect === 'deny', 'Default deny');
-}
+const agentDirectory = resolve(root, '.opencode/agents');
+const agentFiles = existsSync(agentDirectory) ? readdirSync(agentDirectory, { recursive: true }) : [];
+check(!agentFiles.some((name) => /\.(md|jsonc?)$/i.test(String(name))), 'Sem agentes personalizados locais');
 check(!existsSync(resolve(root, '.opencode/agent')), 'Sem diretório singular duplicado');
 assert.deepEqual(readdirSync(resolve(root, '.opencode/skills')).sort(), [...skills].sort());
 const paths = ['AGENTS.md', '.opencode/README.md', 'opencode.jsonc', '.opencode/validate.mjs'];
-paths.push(...names.map((name) => `.opencode/agents/${name}.md`));
 for (const skill of skills) {
   const path = `.opencode/skills/${skill}/SKILL.md`;
   const entry = frontmatter(path);
@@ -190,8 +176,12 @@ for (const path of [...paths, 'skills-lock.json']) {
     { cwd: root, input: `${path}\n`, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   check(!ignored.error && ignored.status === 1 && !ignored.stdout.trim(), `Versionável ${path}`);
 }
-permissions(agents);
-console.log(`OK: estrutura, 6 agentes, 8 skills de projeto, referências e regras locais (${checks} verificações).`);
+permissions([{ action: '*', resource: '*', effect: 'allow' }, ...config.permissions], 'Raiz preservada');
+permissions([{ action: '*', resource: '*', effect: 'allow' }, ...config.permissions,
+  ...config.agents.build.permissions], 'Build local', true);
+console.log(`OK: Plan/Build nativos, sem agentes personalizados, 8 skills e proteções locais (${checks} verificações).`);
+console.log('Disponibilidade operacional de ferramentas MCP não é comprovada pela matriz de permissões.');
+console.log('Storage/Edge Functions e query_logs: nomes oficiais configurados; disponibilidade/operação não verificadas.');
 
 if (process.argv.includes('--runtime')) {
   // A CLI pode usar HOME como localização padrão mesmo quando cwd é o projeto.
@@ -201,29 +191,31 @@ if (process.argv.includes('--runtime')) {
     stdio: ['ignore', 'pipe', 'pipe'],
   }));
   const info = get('/api/info');
-  check(info.version === '2.1.1', 'Versão nativa auditada');
+  check(typeof info.version === 'string' && /^2\./.test(info.version), 'OpenCode V2; validar o contrato retornado');
   const registeredAgents = get('/api/agent');
   const registeredSkills = get('/api/skill');
   check(registeredAgents.location?.directory === root
     && registeredSkills.location?.directory === root, 'Localização nativa correta');
+  check(Array.isArray(registeredAgents.data) && Array.isArray(registeredSkills.data), 'Contrato das listagens locais');
   const actual = Object.fromEntries(registeredAgents.data.map((agent) => [agent.id, agent]));
-  check(registeredAgents.data.filter((agent) => agent.id.startsWith('duna-')).length === 6,
-    'Seis agentes Duna, sem duplicidade');
+  check(!registeredAgents.data.some((agent) => ['Front', 'Back'].includes(agent.id) || agent.id.startsWith('duna-')),
+    'Sem perfis personalizados removidos no runtime');
   for (const name of ['build', 'plan', 'general', 'explore']) {
     check(actual[name], `Agente nativo encontrado: ${name}`);
-    for (const action of ['execute', ...metadataTools, ...approvedTools]) {
-      check(effect(actual[name].permissions, action, '*') === 'deny',
-        `Nativo ${name} não recebe acesso do executor: ${action}`);
+    ruleset(actual[name].permissions);
+    for (const action of ['execute', ...metadataTools, ...approvedTools, ...deniedTools, ...legacyTools]) {
+      const wanted = name === 'build' && action === 'execute' ? 'allow'
+        : name === 'build' && metadataTools.includes(action) ? 'allow'
+        : name === 'build' && approvedTools.includes(action) ? 'ask' : 'deny';
+      check(effect(actual[name].permissions, action, '*') === wanted,
+        `Nativo ${name}: ${action} => ${wanted}`);
     }
   }
   check(registeredSkills.data.filter((entry) => entry.path.startsWith(`${root}/.opencode/skills/`)
     || entry.path.startsWith(`${root}/.agents/skills/`)).length === 8, 'Oito skills de projeto');
   for (const name of names) {
-    check(actual[name]?.system?.trim() === agents[name].body.trim(), `Prompt registrado ${name}`);
-    check(actual[name]?.mode === agents[name].mode, `Modo registrado ${name}`);
-    check(actual[name]?.model?.providerID === 'openai'
-      && actual[name]?.model?.id === 'gpt-6.1-sol'
-      && actual[name]?.model?.variant === 'high', `Modelo registrado ${name}`);
+    check(actual[name]?.mode === 'primary', `Agente primário nativo ${name}`);
+    permissions(actual[name].permissions, `Registrado ${name}`, name === 'build');
   }
   for (const skill of [...skills, ...upstream]) {
     const found = registeredSkills.data.filter((entry) => entry.id === skill);
@@ -232,10 +224,23 @@ if (process.argv.includes('--runtime')) {
     const base = skills.includes(skill) ? '.opencode' : '.agents';
     check(found[0].path === resolve(root, base, 'skills', skill, 'SKILL.md'), `Origem registrada ${skill}`);
   }
-  const sources = get('/api/config');
-  const project = sources.find((entry) => entry.path === resolve(root, 'opencode.jsonc'));
-  check(project?.info?.default_agent === names[0], 'Configuração aceita pelo parser nativo');
-  check(project?.info?.policies?.length === config.policies.length, 'Policies não descartadas pelo parser');
-  permissions(actual, true);
-  console.log(`OK: OpenCode ${info.version} confirmou parsing, descoberta e regras registradas (${checks} verificações totais).`);
+  const models = get('/api/model');
+  check(Array.isArray(models.data), 'Contrato do catálogo local de modelos');
+  check(models.data.some((model) => model.providerID === 'openai'
+    && model.id === 'gpt-6.1-sol' && model.variants?.some((variant) => variant.id === 'high')),
+  'Modelo/variante no catálogo local');
+  const mcp = get('/api/mcp');
+  check(mcp.location?.directory === root, 'Localização do estado MCP');
+  check(Array.isArray(mcp.data), 'Contrato da listagem local MCP');
+  const duna = mcp.data.find((entry) => entry.name === 'supabase_duna');
+  check(duna, 'Conexão supabase_duna registrada para o projeto');
+  for (const server of mcp.data.filter((entry) => /^supabase(?:[_-]|$)/.test(entry.name))) {
+    console.log(`MCP ${server.name} (estado local): ${server.status?.status ?? 'desconhecido'}.`);
+  }
+  console.log('A API GET /api/mcp informa conexão, não autorização ou catálogo nominal de tools.');
+  console.log('Storage/Edge Functions e query_logs: permissões configuradas não comprovam disponibilidade/operação.');
+  // Não busca /api/config: pode conter configuração global e material sensível.
+  // Não executa MCP nem tenta atualizar conexão, OAuth ou catálogo remoto.
+  console.log(`OK: OpenCode ${info.version} confirmou agentes nativos, skills e regras registradas (${checks} verificações totais).`);
+  console.log('Limites: policies são avaliadas localmente; sem prova E2E, disponibilidade de tools ou operação remota.');
 }

@@ -2,36 +2,35 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { Button, ButtonLink } from '@/components/ui/button';
-import { Calendar, Users, Clock, MessageSquare, CheckCircle2, ChevronDown, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Utensils, Search, History, CalendarCheck, XCircle, CalendarOff, Navigation, ShieldCheck, ArrowLeft, Copy } from 'lucide-react';
-import { format, parse, isAfter, addHours, differenceInHours, addDays } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { isValidCpf } from '@/lib/cpf';
+import { FieldLabel, Input } from '@/components/ui/form-controls';
+import { Feedback } from '@/components/ui/feedback';
+import { Calendar, Clock, MessageSquare, CheckCircle2, AlertCircle, Loader2, MapPin, Instagram, MessageCircle, AlertTriangle, Search, History, CalendarCheck, XCircle, CalendarOff, Navigation, ArrowLeft, Copy } from 'lucide-react';
+import { format, parse } from 'date-fns';
 import { buildDuplicateReservationMessage, type DuplicateReservationChoice } from '@/lib/reservation-duplicate-message';
 import HorariosFuncionamento from '@/app/components/HorariosFuncionamento';
+import PublicReservationForm, { ReservationSummary, type PublicSpecialDate, type PublicDecoration, type ReservationSelection } from '@/app/components/PublicReservationForm';
+import ReservationProgress from '@/app/components/ReservationProgress';
+import { getReservationPayment } from '@/lib/reservation-payment';
+import { formatReservationCpf, getPublicReservationDates, RESERVATION_MIN_LEAD_HOURS, type PublicReservationContact } from '@/lib/public-reservation-form';
 
 type ReservationCredential = { id: string; token: string; phone: string };
-type Decoration = { id: string; name: string; image_url: string; available: boolean };
 type DuplicateReservation = { time: string; guests: number; turn: 'lunch' | 'dinner' };
 
 const RESERVATION_CREDENTIALS_KEY = 'duna-reservation-credentials';
 
 export default function DunaGastrobarReservation() {
-  // Dropdown Open States
-  const [isDataOpen, setIsDataOpen] = useState(false);
-  const [isPessoasOpen, setIsPessoasOpen] = useState(false);
-  const [isHorarioOpen, setIsHorarioOpen] = useState(false);
-
   // Form Fields
+  const [bookingStep, setBookingStep] = useState<'reservation' | 'details'>('reservation');
   const [date, setDate] = useState('');
   const [guests, setGuests] = useState<number | null>(null);
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
-  const [customGuestCount, setCustomGuestCount] = useState('');
-  const [formData, setFormData] = useState({ name: '', email: '', whatsapp: '', cpf: '' });
-  const [formErrors, setFormErrors] = useState({ name: '', email: '', whatsapp: '', cpf: '' });
+  const [formData, setFormData] = useState<PublicReservationContact>({ name: '', whatsapp: '', cpf: '' });
+  const [submissionError, setSubmissionError] = useState('');
+  const submissionRef = useRef(false);
   
   // Status States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,17 +49,24 @@ export default function DunaGastrobarReservation() {
   const [pixError, setPixError] = useState('');
   const [isCreatingPix, setIsCreatingPix] = useState(false);
   const [pixCopied, setPixCopied] = useState(false);
-  const [totalGuestsForDate, setTotalGuestsForDate] = useState(0);
+  const [copyError, setCopyError] = useState('');
+  const [storageError, setStorageError] = useState('');
+  const [reservationState, setReservationState] = useState<{ status: string; paymentStatus: string } | null>(null);
+  const [statusError, setStatusError] = useState('');
+  const resultTitleRef = useRef<HTMLHeadingElement>(null);
   const [fullyBookedDates, setFullyBookedDates] = useState<string[]>([]);
-  const [allSpecialDates, setAllSpecialDates] = useState<any[]>([]);
-  const [allBlockedDates, setAllBlockedDates] = useState<any[]>([]);
+  const [allSpecialDates, setAllSpecialDates] = useState<PublicSpecialDate[]>([]);
+  const [allBlockedDates, setAllBlockedDates] = useState<{ date: string }[]>([]);
   const [availableTimesByDate, setAvailableTimesByDate] = useState<Record<string, string[]>>({});
   const [loadingAvailability, setLoadingAvailability] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState('');
   const [timeTurnsByDate, setTimeTurnsByDate] = useState<Record<string, Record<string, string>>>({});
   const [turnTotals, setTurnTotals] = useState<Record<string, number>>({});
-  const [specialDateInfo, setSpecialDateInfo] = useState<any>(null);
-  const [specialDatesOptions, setSpecialDatesOptions] = useState<any[]>([]);
-  const [decorations, setDecorations] = useState<Decoration[]>([]);
+  const [specialDateInfo, setSpecialDateInfo] = useState<PublicSpecialDate | null>(null);
+  const [decorations, setDecorations] = useState<PublicDecoration[]>([]);
+  const [decorationsLoading, setDecorationsLoading] = useState(false);
+  const [decorationsError, setDecorationsError] = useState('');
+  const [decorationRequest, setDecorationRequest] = useState(0);
   const [decorationId, setDecorationId] = useState('');
   
   // States for "My Reservations"
@@ -69,6 +75,8 @@ export default function DunaGastrobarReservation() {
   const [searchPhone, setSearchPhone] = useState('');
   const [userReservations, setUserReservations] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const searchRef = useRef(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [newQuantityValue, setNewQuantityValue] = useState('');
@@ -77,17 +85,51 @@ export default function DunaGastrobarReservation() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [reservationToCancel, setReservationToCancel] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [policyAccepted, setPolicyAccepted] = useState(false);
   const [paymentPolicyAccepted, setPaymentPolicyAccepted] = useState(false);
   const [paymentCpf, setPaymentCpf] = useState('');
-  const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [recoveryCode, setRecoveryCode] = useState('');
-  const [recoveryChallengeId, setRecoveryChallengeId] = useState('');
-  const [recoveryMessage, setRecoveryMessage] = useState('');
   
-  const CAPACITY_LIMIT = 80;
   const WHATSAPP_NUMBER = "5569992564637";
-  const requiresPayment = (guests || 0) >= 15 || Boolean(specialDateInfo?.requires_fee);
+  const paymentRule = getReservationPayment(guests || 0, specialDateInfo);
+  const requiresPayment = isSuccess ? reservationPaymentAmount > 0 : paymentRule.required;
+  const selection: ReservationSelection = { date, guests, time, notes, decorationId, specialDate: specialDateInfo };
+  const paymentPaid = reservationState?.paymentStatus === 'paid';
+  const reservationConfirmed = reservationState?.status === 'confirmed';
+  const reservationCancelled = ['cancelled', 'cancelado'].includes(reservationState?.status || '');
+
+  useEffect(() => {
+    if (!isSuccess) return;
+    window.scrollTo(0, 0);
+    resultTitleRef.current?.focus({ preventScroll: true });
+  }, [isSuccess]);
+
+  useEffect(() => {
+    if (!isSuccess || !reservationId || !reservationAccessToken || !reservationPaymentAmount) return;
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const checkUntil = Date.now() + 30 * 60 * 1000;
+    const refresh = async () => {
+      let finished = false;
+      try {
+        const response = await fetch(`/api/reservations/${reservationId}`, {
+          cache: 'no-store', headers: { Authorization: `Bearer ${reservationAccessToken}` },
+        });
+        if (!response.ok) throw new Error('Não foi possível atualizar a situação da reserva.');
+        const result = await response.json();
+        if (!result.reservation) throw new Error('Reserva não encontrada.');
+        if (cancelled) return;
+        const status = String(result.reservation.status || 'pending');
+        const paymentStatus = String(result.reservation.payment_status || 'pending');
+        setReservationState({ status, paymentStatus });
+        setStatusError('');
+        finished = paymentStatus === 'paid' || ['cancelled', 'cancelado', 'completed', 'no_show'].includes(status);
+      } catch {
+        if (!cancelled) setStatusError('Não foi possível atualizar a situação agora. A confirmação depende do sistema; se necessário, fale com a equipe.');
+      }
+      if (!cancelled && !finished && Date.now() < checkUntil) timeout = setTimeout(() => void refresh(), 5000);
+    };
+    void refresh();
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [isSuccess, reservationId, reservationAccessToken, reservationPaymentAmount]);
 
   const getStoredReservationCredentials = (): ReservationCredential[] => {
     try {
@@ -105,102 +147,13 @@ export default function DunaGastrobarReservation() {
     window.localStorage.setItem(RESERVATION_CREDENTIALS_KEY, JSON.stringify([...credentials, credential]));
   };
 
-  // Formata a data em português com as primeiras letras maiúsculas
-  const formatDisplayDate = (d: Date) => {
-    const formatted = format(d, "EEEE, dd 'de' MMMM", { locale: ptBR });
-    return formatted
-      .split(' ')
-      .map(word => {
-        if (word.toLowerCase() === 'de') return word;
-        return word
-          .split('-')
-          .map(sub => sub.charAt(0).toUpperCase() + sub.slice(1))
-          .join('-');
-      })
-      .join(' ');
-  };
-
-  // The public booking horizon is today plus the following ten calendar days.
-  const generateAvailableDates = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = 0; i <= 10; i++) {
-      const d = addDays(today, i);
-      // A agenda do banco decide os dias disponíveis, sem dias fixos no código.
-      dates.push(d);
-    }
-    return dates;
-  };
-
-  const datesList = useMemo(() => generateAvailableDates(), []);
-
-  const validateForm = () => {
-    let valid = true;
-    const errors = { name: '', email: '', whatsapp: '', cpf: '' };
-
-    if (!formData.name.trim()) {
-      errors.name = 'Nome é obrigatório.';
-      valid = false;
-    }
-
-    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      errors.email = 'E-mail inválido.';
-      valid = false;
-    }
-
-    if (!formData.whatsapp.trim()) {
-      errors.whatsapp = 'WhatsApp é obrigatório.';
-      valid = false;
-    } else if (!/^\(?\d{2}\)?[\s-]?\d{4,5}-?\d{4}$/.test(formData.whatsapp)) {
-      errors.whatsapp = 'Formato inválido. Ex: (11) 99999-9999';
-      valid = false;
-    }
-
-    if (!isValidCpf(formData.cpf)) {
-      errors.cpf = 'Informe um CPF válido.';
-      valid = false;
-    }
-
-    setFormErrors(errors);
-    return valid;
-  };
-
-  const getAvailableTimes = (selectedDate: string) => {
-    return (availableTimesByDate[selectedDate] || []).filter((selectedTime) => {
-      const commercialTurn = timeTurnsByDate[selectedDate]?.[selectedTime];
-      const occupied = commercialTurn ? turnTotals[`${selectedDate}|${commercialTurn}`] || 0 : 0;
-      return occupied + (guests || 1) <= CAPACITY_LIMIT;
-    });
-  };
-
-  const checkLeadTime = (selectedDate: string, selectedTime: string) => {
-    if (!selectedDate || !selectedTime) return true;
-    
-    const reservationDateTime = parse(`${selectedDate} ${selectedTime}`, 'yyyy-MM-dd HH:mm', new Date());
-    const now = new Date();
-    const diff = differenceInHours(reservationDateTime, now);
-    
-    return diff >= 8;
-  };
-
-  const fetchCapacity = async (selectedDate: string, selectedTime = '') => {
-    try {
-      const response = await fetch(`/api/reservations/availability?from=${selectedDate}`, { cache: 'no-store' });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-
-      const commercialTurn = result.timeTurns?.[selectedDate]?.[selectedTime];
-      const total = commercialTurn ? result.turnTotals?.[`${selectedDate}|${commercialTurn}`] || 0 : 0;
-      setTotalGuestsForDate(total);
-    } catch {
-      setTotalGuestsForDate(0);
-    }
-  };
+  const datesList = useMemo(() => getPublicReservationDates(), []);
 
   const fetchFullDates = useCallback(async () => {
     setLoadingAvailability(true);
-    const firstDate = format(datesList[0], 'yyyy-MM-dd');
-    const lastDate = format(datesList[datesList.length - 1], 'yyyy-MM-dd');
+    setAvailabilityError('');
+    const firstDate = datesList[0];
+    const lastDate = datesList[datesList.length - 1];
     try {
       const response = await fetch(`/api/reservations/availability?from=${firstDate}&to=${lastDate}`, { cache: 'no-store' });
       const result = await response.json();
@@ -213,6 +166,7 @@ export default function DunaGastrobarReservation() {
       setTimeTurnsByDate(result.timeTurns || {});
       setTurnTotals(result.turnTotals || {});
     } catch {
+      setAvailabilityError('Não foi possível consultar os horários. Tente novamente.');
       setFullyBookedDates([]);
       setAllSpecialDates([]);
       setAllBlockedDates([]);
@@ -238,32 +192,56 @@ export default function DunaGastrobarReservation() {
     }
 
     let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      setDecorationsLoading(true);
+      setDecorationsError('');
+    }, 0);
     void fetch(`/api/decorations?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`, { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() : { decorations: [] })
+      .then((response) => {
+        if (!response.ok) throw new Error('Não foi possível consultar as decorações.');
+        return response.json();
+      })
       .then((result) => {
         if (cancelled) return;
         const nextDecorations = result.decorations || [];
         setDecorations(nextDecorations);
-        setDecorationId((currentId) => nextDecorations.some((decoration: Decoration) => decoration.id === currentId && decoration.available) ? currentId : '');
+        setDecorationId((currentId) => nextDecorations.some((decoration: PublicDecoration) => decoration.id === currentId && decoration.available) ? currentId : '');
       })
       .catch(() => {
-        if (!cancelled) setDecorations([]);
+        if (!cancelled) {
+          setDecorations([]);
+          setDecorationId('');
+          setDecorationsError('Não foi possível consultar as decorações. Você pode tentar novamente ou continuar sem decoração.');
+        }
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (!cancelled) setDecorationsLoading(false);
       });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
-  }, [date, time]);
+  }, [date, time, decorationRequest]);
 
-  const fetchSpecialDate = (selectedDate: string) => {
-    const data = allSpecialDates.filter((specialDate) => specialDate.date === selectedDate);
-    if (data.length > 0) {
-      setSpecialDatesOptions(data);
-      setSpecialDateInfo(null);
-    } else {
-      setSpecialDatesOptions([]);
-      setSpecialDateInfo(null);
+  const updateSelection = (next: Partial<ReservationSelection>) => {
+    if (next.date !== undefined) setDate(next.date);
+    if (next.guests !== undefined) setGuests(next.guests);
+    if (next.time !== undefined) setTime(next.time);
+    if (next.notes !== undefined) setNotes(next.notes);
+    if (next.decorationId !== undefined) setDecorationId(next.decorationId);
+    if (next.specialDate !== undefined) setSpecialDateInfo(next.specialDate);
+    if (next.date !== undefined || next.time !== undefined) {
+      setDecorations([]);
+      setDecorationsLoading(Boolean(next.time));
+      setDecorationsError('');
     }
+    // Não mantém CPF de uma seleção paga quando a reserva volta a ser gratuita.
+    const nextPayment = getReservationPayment(next.guests === undefined ? guests || 0 : next.guests || 0,
+      next.specialDate === undefined ? specialDateInfo : next.specialDate);
+    if (!nextPayment.required) setFormData((current) => ({ ...current, cpf: '' }));
+    setSubmissionError('');
   };
 
   const handleWhatsAppRedirect = (reason: 'lead_time' | 'success' | 'capacity_overflow', overrideGuests?: number) => {
@@ -271,15 +249,15 @@ export default function DunaGastrobarReservation() {
     const displayGuests = overrideGuests || guests;
     
     if (reason === 'lead_time') {
-      message = `Olá, gostaria de fazer uma reserva para o dia ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} às ${time} para ${displayGuests} pessoas, mas o sistema informou que é necessário agendar com 8h de antecedência. Poderia me ajudar?`;
+      message = `Olá, gostaria de fazer uma reserva para o dia ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} às ${time} para ${displayGuests} pessoas, mas o sistema informou que é necessário agendar com ${RESERVATION_MIN_LEAD_HOURS}h de antecedência. Poderia me ajudar?`;
     } else if (reason === 'capacity_overflow') {
       message = `Olá, gostaria de fazer uma reserva para o dia ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} para ${displayGuests} pessoas, mas o sistema informou que a capacidade online foi atingida. Teria alguma disponibilidade interna?`;
     } else {
       let paymentInfo = "";
       if (specialDateInfo?.requires_fee) {
-        paymentInfo = `\n\n*Observação:* Estou ciente da taxa de reserva de R$ ${Number(specialDateInfo.fee_amount).toFixed(2)} para esta data. Vou realizar o pagamento do link e enviar o comprovante em seguida.`;
+        paymentInfo = `\n\n*Observação:* Minha reserva tem pagamento antecipado de R$ ${reservationPaymentAmount.toFixed(2)}. A confirmação do pagamento é automática pelo sistema.`;
       } else if (displayGuests && displayGuests >= 15) {
-        paymentInfo = "\n\n*Observação:* Minha reserva é de grupo (15+ pessoas). Vou realizar o pagamento do link de R$ 100,00 e enviar o comprovante em seguida.";
+        paymentInfo = `\n\n*Observação:* Minha reserva é de grupo (15+ pessoas), com pagamento antecipado de R$ ${reservationPaymentAmount.toFixed(2)}. A confirmação do pagamento é automática pelo sistema.`;
       }
       message = `Confirmação de Reserva – Duna Cozinha & Bar\n\nOlá! Acabei de realizar uma reserva pelo site e gostaria de confirmar os detalhes:\n\nNome: ${formData.name}\nData: ${format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}\nHorário: ${time}\nPessoas: ${displayGuests} convidados${paymentInfo}\n\nFico no aguardo da confirmação de vocês. Obrigado!`;
     }
@@ -298,8 +276,9 @@ export default function DunaGastrobarReservation() {
     setGuests(null);
     setTime('');
     setNotes('');
-    setFormData({ name: '', email: '', whatsapp: '', cpf: '' });
-    setFormErrors({ name: '', email: '', whatsapp: '', cpf: '' });
+    setFormData({ name: '', whatsapp: '', cpf: '' });
+    setBookingStep('reservation');
+    setSubmissionError('');
     setIsSuccess(false);
     setDuplicateReservation(null);
     setReservationId('');
@@ -308,12 +287,13 @@ export default function DunaGastrobarReservation() {
     setPixPayment(null);
     setPixError('');
     setPixCopied(false);
-    setTotalGuestsForDate(0);
-    setCustomGuestCount('');
-    setPolicyAccepted(false);
+    setCopyError('');
+    setStorageError('');
+    setReservationState(null);
+    setStatusError('');
     setSpecialDateInfo(null);
-    setSpecialDatesOptions([]);
     setDecorationId('');
+    setDecorations([]);
   };
 
   const createPixPayment = async (id: string, accessToken = reservationAccessToken, cpf = formData.cpf) => {
@@ -341,7 +321,10 @@ export default function DunaGastrobarReservation() {
   };
 
   const handleSubmit = async () => {
+    if (submissionRef.current) return;
+    submissionRef.current = true;
     setIsSubmitting(true);
+    setSubmissionError('');
     const finalGuests = guests || 0;
 
     try {
@@ -350,9 +333,8 @@ export default function DunaGastrobarReservation() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name,
-          email: formData.email,
           whatsapp: formData.whatsapp,
-          cpf: formData.cpf,
+          ...(paymentRule.required ? { cpf: formData.cpf } : {}),
           date,
           time,
           guests: finalGuests,
@@ -369,6 +351,8 @@ export default function DunaGastrobarReservation() {
       }
 
       if (!response.ok) {
+        if (result.code === 'CAPACITY_EXCEEDED') void fetchFullDates();
+        if (result.code === 'DECORATION_UNAVAILABLE') setDecorationRequest((current) => current + 1);
         throw new Error(result.error || 'Não foi possível criar a reserva.');
       }
 
@@ -379,19 +363,21 @@ export default function DunaGastrobarReservation() {
       setReservationId(createdId);
       setReservationAccessToken(accessToken);
       setReservationPaymentAmount(Number(result.paymentAmount || 0));
-      saveReservationCredential({ id: createdId, token: accessToken, phone: formData.whatsapp.replace(/\D/g, '') });
-
-      if (result.paymentRequired) {
-        await createPixPayment(createdId, accessToken);
+      setReservationState({ status: 'pending', paymentStatus: result.paymentRequired ? 'pending' : 'not_required' });
+      try {
+        saveReservationCredential({ id: createdId, token: accessToken, phone: formData.whatsapp.replace(/\D/g, '') });
+      } catch {
+        setStorageError('A reserva foi registrada, mas este navegador não permitiu salvar o acesso. Fale com a equipe se precisar consultá-la depois.');
       }
 
       setIsSuccess(true);
-      if (!result.paymentRequired) {
-        handleWhatsAppRedirect('success');
+      if (result.paymentRequired) {
+        await createPixPayment(createdId, accessToken);
       }
     } catch (error) {
-      alert('Erro ao enviar reserva: ' + (error instanceof Error ? error.message : 'Tente novamente.'));
+      setSubmissionError(error instanceof Error ? error.message : 'Não foi possível enviar a reserva. Tente novamente.');
     } finally {
+      submissionRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -412,26 +398,37 @@ export default function DunaGastrobarReservation() {
   };
 
   const fetchUserReservations = async () => {
+    if (searchRef.current) return;
+    const phone = searchPhone.replace(/\D/g, '');
+    setSearchError('');
+    setUserReservations([]);
+    setHasSearched(false);
+    if (!/^\d{10,11}$/.test(phone)) {
+      setSearchError('Informe um telefone válido com DDD.');
+      return;
+    }
+    searchRef.current = true;
     setIsSearching(true);
     setHasSearched(true);
     
     try {
-      const phone = searchPhone.replace(/\D/g, '');
-      const credentials = getStoredReservationCredentials().filter((credential) => !phone || credential.phone === phone);
+      const credentials = getStoredReservationCredentials().filter((credential) => credential.phone === phone);
       const results = await Promise.all(credentials.map(async (credential) => {
         const response = await fetch(`/api/reservations/${credential.id}`, {
           cache: 'no-store',
           headers: { Authorization: `Bearer ${credential.token}` },
         });
-        if (!response.ok) return null;
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error('Consulta indisponível.');
         const result = await response.json();
         return result.reservation || null;
       }));
       setUserReservations(results.filter(Boolean));
-    } catch (error) {
-      console.error('Erro na busca:', error);
+    } catch {
+      setSearchError('Não foi possível consultar agora. Tente novamente ou entre em contato pelo WhatsApp.');
       setUserReservations([]);
     } finally {
+      searchRef.current = false;
       setIsSearching(false);
     }
   };
@@ -496,43 +493,6 @@ export default function DunaGastrobarReservation() {
     }
   };
 
-  const requestRecoveryCode = async () => {
-    setRecoveryMessage('');
-    try {
-      const response = await fetch('/api/reservations/recovery', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: recoveryEmail }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Não foi possível solicitar o código.');
-      setRecoveryChallengeId(result.challengeId || '');
-      setRecoveryMessage('Se houver reservas ativas para este e-mail, enviamos um código de acesso.');
-    } catch (error) {
-      setRecoveryMessage(error instanceof Error ? error.message : 'Não foi possível solicitar o código.');
-    }
-  };
-
-  const verifyRecoveryCode = async () => {
-    setRecoveryMessage('');
-    try {
-      const response = await fetch('/api/reservations/recovery', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: recoveryEmail, code: recoveryCode, challengeId: recoveryChallengeId }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Código inválido ou expirado.');
-      const phone = searchPhone.replace(/\D/g, '');
-      for (const credential of result.credentials || []) saveReservationCredential({ ...credential, phone });
-      setRecoveryCode('');
-      setRecoveryMessage('Acesso recuperado neste dispositivo. Use a busca para ver suas reservas.');
-      void fetchUserReservations();
-    } catch (error) {
-      setRecoveryMessage(error instanceof Error ? error.message : 'Não foi possível validar o código.');
-    }
-  };
-
   const formatPhoneNumber = (value: string) => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 11) {
@@ -541,19 +501,7 @@ export default function DunaGastrobarReservation() {
     return value;
   };
 
-  const formatCpf = (value: string) => {
-    return value
-      .replace(/\D/g, '')
-      .slice(0, 11)
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-  };
-
-  const getConfirmationText = () => {
-    if (requiresPayment) return "Reservar e Pagar";
-    return "Confirmar Reserva";
-  };
+  const formatCpf = formatReservationCpf;
 
   const changePageView = (nextView: 'home' | 'reservation') => {
     window.scrollTo(0, 0);
@@ -564,22 +512,33 @@ export default function DunaGastrobarReservation() {
     return (
       <div className="duna-site min-h-screen flex items-center justify-center p-4 font-sans text-[#f8ead0]">
         <div className="duna-success-card w-full max-w-[420px] rounded-[32px] shadow-2xl overflow-hidden p-8 sm:p-12 text-center">
-          <div className="bg-green-100 text-green-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 size={40} />
+          {!reservationCancelled && <div className="mb-6 rounded-xl bg-[#fdfbf7] p-3 text-left text-[#4a3728]">
+            <ReservationProgress current={requiresPayment && !paymentPaid ? 'payment' : 'complete'} requiresPayment={requiresPayment} />
+          </div>}
+          <div className={`${reservationConfirmed ? 'bg-green-100 text-green-700' : reservationCancelled ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'} w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6`}>
+            {reservationConfirmed ? <CheckCircle2 size={40} /> : reservationCancelled ? <XCircle size={40} /> : <Clock size={40} />}
           </div>
-          <h1 className="text-3xl font-serif font-bold mb-2">Reserva solicitada!</h1>
+          <h1 ref={resultTitleRef} tabIndex={-1} className="text-3xl font-serif font-bold mb-2 outline-none">{reservationCancelled ? 'Reserva cancelada' : reservationConfirmed ? 'Reserva confirmada!' : requiresPayment ? 'Aguardando pagamento' : 'Reserva solicitada!'}</h1>
           <p className="text-sm opacity-70 mb-8">
-            {requiresPayment
+            {reservationCancelled
+              ? paymentPaid ? 'O pagamento foi registrado, mas a reserva continua cancelada. Fale com a equipe para orientação.' : 'Esta reserva foi cancelada. Fale com a equipe se precisar de ajuda.'
+              : reservationConfirmed ? 'Confira os detalhes abaixo. Esperamos você no Duna!'
+              : requiresPayment
               ? 'Sua mesa foi registrada. Conclua o pagamento PIX para confirmar a reserva.'
               : 'Recebemos seu pedido. Confirme os detalhes com nossa equipe pelo WhatsApp.'}
           </p>
 
-          {requiresPayment && (
+          <div className="mb-6 text-left"><ReservationSummary selection={selection} />{decorationId && <p className="mt-3 text-sm">Decoração: {decorations.find((item) => item.id === decorationId)?.name}</p>}</div>
+          {paymentPaid && <p role="status" className="mb-6 rounded-xl bg-green-100 p-4 text-sm font-semibold text-green-900">Pagamento recebido: R$ {reservationPaymentAmount.toFixed(2).replace('.', ',')}.</p>}
+          {statusError && <p role="status" className="mb-4 text-sm">{statusError}</p>}
+          {storageError && <p role="alert" className="mb-4 text-sm">{storageError}</p>}
+
+          {requiresPayment && !paymentPaid && !reservationCancelled && (
             <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-[24px] text-left animate-in fade-in zoom-in duration-500">
               <p className="text-xs font-bold text-amber-900 mb-2 uppercase tracking-wider flex items-center gap-2">
                 <AlertCircle size={16} /> PIX da reserva
               </p>
-              <p className="text-[11px] text-amber-800 leading-relaxed mb-4">
+              <p className="text-sm text-amber-800 leading-relaxed mb-4">
                 Taxa de <strong>R$ {(pixPayment?.amount || reservationPaymentAmount).toFixed(2).replace('.', ',')}</strong>, revertida em consumação. A confirmação é automática após o pagamento.
               </p>
 
@@ -602,24 +561,30 @@ export default function DunaGastrobarReservation() {
                     />
                   )}
                    <Button
-                     type="button"
-                     onClick={async () => {
-                      await navigator.clipboard.writeText(pixPayment.qrCode);
-                      setPixCopied(true);
-                      window.setTimeout(() => setPixCopied(false), 2500);
+                      type="button"
+                      onClick={async () => {
+                       try {
+                         await navigator.clipboard.writeText(pixPayment.qrCode);
+                         setPixCopied(true);
+                         setCopyError('');
+                         window.setTimeout(() => setPixCopied(false), 2500);
+                       } catch {
+                         setCopyError('Não foi possível copiar automaticamente. Selecione e copie o código abaixo.');
+                       }
                     }}
                      className="w-full rounded-xl uppercase tracking-widest"
                   >
                     {pixCopied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                     {pixCopied ? 'Código copiado' : 'Copiar PIX copia e cola'}
                    </Button>
-                  <p className="text-center text-[9px] text-amber-800/70">O código PIX expira em 30 minutos.</p>
+                  {copyError && <div><p role="alert" className="text-sm text-red-800">{copyError}</p><textarea readOnly aria-label="Código PIX para copiar manualmente" value={pixPayment.qrCode} className="mt-2 w-full rounded-lg border border-amber-300 bg-white p-2 text-sm text-[#4a3728]" /></div>}
+                  {pixPayment.expiresAt && <p className="text-center text-xs text-amber-900">Validade do PIX: {new Date(pixPayment.expiresAt).toLocaleString('pt-BR', { timeZone: 'America/Porto_Velho', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (horário de Porto Velho).</p>}
                 </div>
               )}
 
               {pixError && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center">
-                  <p className="mb-3 text-[10px] font-semibold text-red-700">{pixError}</p>
+                  <p role="alert" className="mb-3 text-sm font-semibold text-red-800">{pixError}</p>
                   <button
                     type="button"
                     disabled={isCreatingPix || !reservationId}
@@ -640,18 +605,19 @@ export default function DunaGastrobarReservation() {
              className="mb-3 w-full rounded-2xl uppercase tracking-wider"
           >
             <MessageCircle size={18} />
-            {requiresPayment ? 'Falar com a equipe' : 'Confirmar no WhatsApp'}
+            {requiresPayment ? 'Falar com a equipe' : 'Confirmar com a equipe'}
            </Button>
-          <p className="text-center text-[9px] opacity-60 mb-6 px-4">
+          <p className="text-center text-xs opacity-80 mb-6 px-4">
             {requiresPayment
               ? 'Não é necessário enviar comprovante: o pagamento é confirmado automaticamente.'
               : 'Clique acima para notificar nossa equipe sobre sua reserva.'}
           </p>
            <Button
-             type="button"
-             variant="ghost"
-             onClick={resetForm}
-             className="w-full rounded-2xl uppercase tracking-wider text-[#4A3728]/60"
+              type="button"
+              variant="ghost"
+              disabled={isCreatingPix || isSubmitting}
+              onClick={resetForm}
+              className="w-full rounded-2xl uppercase tracking-wider !text-[#f3e5cd]"
           >
             Fazer outra reserva
            </Button>
@@ -662,7 +628,7 @@ export default function DunaGastrobarReservation() {
 
   return (
     <div className="duna-site min-h-screen flex flex-col items-center justify-start py-0 sm:py-8 font-sans text-[#f8ead0] overflow-x-hidden">
-      <div className="duna-shell w-full max-w-[460px] sm:rounded-[34px] shadow-2xl overflow-hidden flex flex-col shrink-0">
+      <div className={`duna-shell w-full ${pageView === 'reservation' ? 'max-w-[640px] overflow-clip' : 'max-w-[460px] overflow-hidden'} sm:rounded-[34px] shadow-2xl flex flex-col shrink-0`}>
         
         {pageView === 'home' && (
           <>
@@ -756,26 +722,20 @@ export default function DunaGastrobarReservation() {
         {pageView === 'reservation' && (
           <>
         {viewMode === 'reserve' && (
-          <section className="duna-reservation-heading px-7 pb-7 pt-6 text-center">
+          <section className="duna-reservation-heading px-5 py-4 sm:px-7">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => changePageView('home')}
-              className="mb-4 flex min-h-11 items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#6f4825]"
+              className="flex min-h-11 items-center gap-2 text-sm font-semibold text-[#6f4825]"
               aria-label="Voltar para o início"
             >
               <ArrowLeft size={17} />
               Voltar
             </button>
-            <div className="duna-mini-brand mb-7">
-              <Image src="/Favicon-D.png" alt="" width={40} height={40} className="mx-auto mb-1 h-10 w-10 object-contain" />
-              <p className="font-serif text-3xl font-semibold tracking-[0.22em] pl-[0.22em]">DUNA</p>
-              <p className="text-[8px] font-semibold tracking-[0.36em] pl-[0.36em]">COZINHA E BAR</p>
-            </div>
-            <h2 className="font-serif text-[42px] leading-[0.94] font-semibold text-[#2a170d]">Garanta sua<br />Mesa no Duna</h2>
-            <div className="mt-5 flex items-center justify-center gap-3 text-[#a56818]">
-              <span className="h-px w-9 bg-current" />
-              <p className="text-sm font-semibold">Reserve em poucos segundos</p>
-              <span className="h-px w-9 bg-current" />
+            <div className="duna-mini-brand mt-2 flex items-center gap-3">
+              <Image src="/Favicon-D.png" alt="" width={40} height={40} className="h-10 w-10 object-contain" />
+              <div><p className="font-serif text-3xl font-semibold tracking-[0.18em]">DUNA</p><p className="text-xs font-semibold tracking-[0.12em]">COZINHA E BAR</p></div>
             </div>
           </section>
         )}
@@ -783,6 +743,8 @@ export default function DunaGastrobarReservation() {
         {/* Alternador de Modos (Abas) */}
         <div className="duna-tabs flex p-1 mx-4 mt-4 rounded-2xl">
           <button 
+            disabled={isSubmitting}
+            aria-pressed={viewMode === 'reserve'}
             onClick={() => setViewMode('reserve')}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all ${
               viewMode === 'reserve' 
@@ -794,6 +756,8 @@ export default function DunaGastrobarReservation() {
             Nova Reserva
           </button>
           <button 
+            disabled={isSubmitting}
+            aria-pressed={viewMode === 'check'}
             onClick={() => setViewMode('check')}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all ${
               viewMode === 'check' 
@@ -807,587 +771,73 @@ export default function DunaGastrobarReservation() {
         </div>
 
         {/* Área de Conteúdo */}
-        <div className="duna-reservation-area flex-1 overflow-y-auto">
+        <div className="duna-reservation-area flex-1">
           {viewMode === 'reserve' ? (
-            <div className="p-4 sm:p-5">
-              <div className="duna-form-card bg-white border border-[#D9CFC1] rounded-[28px] shadow-sm flex flex-col">
-                
-                {/* Banner de tolerância do form */}
-                <div className="bg-amber-50 p-4 border-b border-[#D9CFC1] text-[#4A3728] rounded-t-[28px]">
-                  <p className="text-[10px] font-semibold text-amber-900 leading-relaxed text-center uppercase tracking-wider">
-                    ⚠️ Tolerância de 20min. Cardápio à la carte (sem rodízio).
-                  </p>
-                </div>
-
-                {/* CAMPO 1: DATA */}
-                <div className="relative">
-                  <button
-                    onClick={() => {
-                      setIsDataOpen(!isDataOpen);
-                      setIsPessoasOpen(false);
-                      setIsHorarioOpen(false);
-                    }}
-                    className={`w-full p-4 flex items-center justify-between text-left hover:bg-[#F5F2ED]/40 transition-colors ${
-                      isDataOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-[#4A3728]/70">
-                        <Calendar size={18} />
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Data</p>
-                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
-                          {date ? formatDisplayDate(parse(date, 'yyyy-MM-dd', new Date())) : 'Selecione o dia'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isDataOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  
-                  {isDataOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsDataOpen(false)} />
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-[#F5F2ED] mx-2">
-                        {datesList.map((dObj) => {
-                          const dateValue = format(dObj, 'yyyy-MM-dd');
-                          const isFull = fullyBookedDates.includes(dateValue);
-                          const isBlocked = allBlockedDates.some((item) => item.date === dateValue);
-                          const hasNoTimes = !(availableTimesByDate[dateValue]?.length);
-                          const disabled = loadingAvailability || isFull || isBlocked || hasNoTimes;
-                          const displayLabel = formatDisplayDate(dObj);
-                          
-                          return (
-                            <button
-                              key={dateValue}
-                              disabled={disabled}
-                              onClick={() => {
-                                setDate(dateValue);
-                                fetchCapacity(dateValue);
-                                fetchSpecialDate(dateValue);
-                                setIsDataOpen(false);
-                                setGuests(null);
-                                setTime('');
-                              }}
-                              className={`w-full text-left px-5 py-3 hover:bg-[#F5F2ED] transition-colors flex items-center justify-between font-medium ${
-                                date === dateValue ? 'bg-[#F5F2ED] font-bold text-[#4A3728]' : 'text-[#4A3728]/80'
-                              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                              <div className="flex flex-col items-start gap-1">
-                                <span className="text-xs">{displayLabel}</span>
-                                {allSpecialDates.filter(s => s.date === dateValue).map(s => (
-                                  <span key={s.id} className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded uppercase">{s.description || 'Evento'}</span>
-                                ))}
-                              </div>
-                              {isFull && <span className="text-[9px] font-bold text-red-600 uppercase">Lotado</span>}
-                              {!isFull && disabled && <span className="text-[9px] font-bold text-[#4A3728]/65 uppercase">{loadingAvailability ? 'Carregando' : isBlocked ? 'Bloqueado' : 'Sem horários'}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {date && allBlockedDates.find(b => b.date === date) ? (
-                  <div className="p-8 text-center animate-in fade-in zoom-in duration-300">
-                    <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CalendarOff size={32} />
-                    </div>
-                    <h3 className="text-lg font-bold text-[#4A3728] mb-2">Reservas Bloqueadas</h3>
-                    <p className="text-sm text-[#4A3728]/70 mb-6">
-                      As reservas pelo site para este dia estão bloqueadas. Por favor, entre em contato pelo WhatsApp para tentar realizar a sua reserva.
-                    </p>
-                    <a 
-                      href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Olá, vi no site que as reservas para o dia ' + formatDisplayDate(parse(date, 'yyyy-MM-dd', new Date())) + ' estão bloqueadas. Teria alguma disponibilidade?')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 bg-[#25D366] text-white px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-[#20b858] transition-colors"
-                    >
-                      <MessageCircle size={18} />
-                      Chamar no WhatsApp
-                    </a>
-                  </div>
-                ) : (
-                  <>
-
-                {/* CAMPO 2: PESSOAS / PACOTES */}
-                <div className="relative border-t border-[#D9CFC1]">
-                  <button
-                    disabled={!date}
-                    onClick={() => {
-                      setIsPessoasOpen(!isPessoasOpen);
-                      setIsDataOpen(false);
-                      setIsHorarioOpen(false);
-                    }}
-                    className={`w-full p-4 flex items-center justify-between text-left transition-colors disabled:opacity-40 ${
-                      !date ? 'cursor-not-allowed bg-stone-50' : 'hover:bg-[#F5F2ED]/40'
-                    } ${isPessoasOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-[#4A3728]/70">
-                        <Users size={18} />
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">
-                          {specialDateInfo ? (specialDateInfo.description || 'Evento Especial') : (specialDatesOptions.length > 0 ? 'Pacote / Evento' : 'Pessoas')}
-                        </p>
-                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
-                          {specialDateInfo && specialDateInfo.included_guests 
-                            ? `${specialDateInfo.included_guests} pessoas (Fixo)`
-                            : (guests ? `${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : 'Selecione')}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isPessoasOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  
-                  {isPessoasOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsPessoasOpen(false)} />
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 mx-2 flex flex-col max-h-72 overflow-y-auto custom-scrollbar">
-                        
-                        {specialDatesOptions.length > 0 && !specialDateInfo ? (
-                          <div className="p-2 space-y-2">
-                            {specialDatesOptions.map((pkg) => (
-                              <button
-                                key={pkg.id}
-                                onClick={() => {
-                                  setSpecialDateInfo(pkg);
-                                  if (pkg.included_guests) {
-                                    setGuests(pkg.included_guests);
-                                    setCustomGuestCount('');
-                                    setIsPessoasOpen(false);
-                                    setTime('');
-                                  } else {
-                                    setGuests(null);
-                                  }
-                                }}
-                                className={`w-full text-left p-3 rounded-xl border transition-all ${
-                                  specialDateInfo?.id === pkg.id
-                                    ? 'border-[#4A3728] bg-[#F5F2ED]'
-                                    : 'border-[#D9CFC1] hover:bg-[#F5F2ED]'
-                                }`}
-                              >
-                                <div className="font-bold text-sm text-[#4A3728]">
-                                  {pkg.description || `Evento`} {pkg.included_guests ? `(Mesa p/ ${pkg.included_guests})` : ''}
-                                </div>
-                                {pkg.requires_fee && (
-                                  <div className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-wider flex items-center gap-1">
-                                    <AlertCircle size={10} /> Taxa: R$ {Number(pkg.fee_amount).toFixed(2).replace('.', ',')}
-                                  </div>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <>
-                            {specialDateInfo && !specialDateInfo.included_guests && (
-                              <div className="bg-[#F5F2ED] p-3 border-b border-[#D9CFC1] flex justify-between items-center shrink-0">
-                                <div>
-                                  <span className="text-[8px] uppercase font-bold text-[#4A3728]/70 block">Evento Selecionado</span>
-                                  <span className="text-xs font-bold text-[#4A3728]">{specialDateInfo.description || 'Especial'}</span>
-                                </div>
-                                {specialDatesOptions.length > 1 && (
-                                  <button 
-                                    onClick={() => setSpecialDateInfo(null)}
-                                    className="text-[9px] text-[#4A3728] font-bold bg-[#D9CFC1]/50 px-2 py-1 rounded hover:bg-[#D9CFC1]"
-                                  >
-                                    Trocar
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                            <div className="grid grid-cols-5 gap-2 p-4 shrink-0">
-                          {Array.from({ length: 30 }, (_, i) => i + 1).map((num) => {
-                            return (
-                              <button
-                                key={num}
-                                onClick={() => {
-                                  setGuests(num);
-                                  setCustomGuestCount('');
-                                  setIsPessoasOpen(false);
-                                  setTime('');
-                                }}
-                                className={`py-2 rounded-lg text-xs font-bold border transition-all ${
-                                  guests === num
-                                    ? 'border-[#4A3728] bg-[#4A3728] text-white'
-                                    : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED] disabled:opacity-20 disabled:cursor-not-allowed'
-                                }`}
-                              >
-                                {num}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        
-                        <button
-                          onClick={() => {
-                            handleWhatsAppRedirect('capacity_overflow', 30);
-                            setIsPessoasOpen(false);
-                          }}
-                          className="m-4 mt-0 p-3 border border-dashed border-[#25D366]/40 rounded-xl flex items-center justify-between text-[10px] font-bold text-[#128C7E] bg-[#25D366]/5 hover:bg-[#25D366]/10 transition-all text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">💬</span>
-                            <span>Mais de 30 pessoas? Fale com o Duna</span>
-                          </div>
-                          <span className="text-[8px] uppercase tracking-widest text-[#128C7E]">WhatsApp →</span>
-                        </button>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* CAMPO 3: HORÁRIO */}
-                <div className="relative border-t border-[#D9CFC1]">
-                  <button
-                    disabled={!date || !guests}
-                    onClick={() => {
-                      setIsHorarioOpen(!isHorarioOpen);
-                      setIsDataOpen(false);
-                      setIsPessoasOpen(false);
-                    }}
-                    className={`w-full p-4 flex items-center justify-between text-left transition-colors disabled:opacity-40 ${
-                      (!date || !guests) ? 'cursor-not-allowed bg-stone-50' : 'hover:bg-[#F5F2ED]/40'
-                    } ${isHorarioOpen ? 'border-l-4 border-[#4A3728]' : 'border-l-4 border-transparent'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-[#4A3728]/70">
-                        <Clock size={18} />
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-[#4A3728]/50">Horário</p>
-                        <p className="text-xs font-bold text-[#4A3728] mt-0.5">
-                          {(!date || !guests) ? 'Escolha data e pessoas primeiro' : (time ? time : 'Selecione')}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronDown size={16} className={`text-[#4A3728]/45 transition-transform ${isHorarioOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  
-                  {isHorarioOpen && date && guests && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsHorarioOpen(false)} />
-                      <div className="absolute left-0 right-0 mt-1 bg-white border border-[#D9CFC1] rounded-2xl shadow-xl z-50 mx-2 p-4 grid grid-cols-3 gap-2">
-                        {getAvailableTimes(date).map((t) => (
-                          <button
-                            key={t}
-                            onClick={() => {
-                              setTime(t);
-                              void fetchCapacity(date, t);
-                              setIsHorarioOpen(false);
-                            }}
-                            className={`py-2.5 rounded-lg border text-xs font-bold transition-all ${
-                              time === t
-                                ? 'border-[#4A3728] bg-[#4A3728] text-white'
-                                : 'border-[#D9CFC1] text-[#4A3728] hover:bg-[#F5F2ED]'
-                            }`}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Avisos de Antecedência e Capacidade */}
-                {time && !checkLeadTime(date, time) && (
-                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex flex-col gap-3 animate-in fade-in duration-300">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                      <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
-                        Reservas para hoje com menos de 8 horas de antecedência devem ser feitas diretamente via WhatsApp.
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => handleWhatsAppRedirect('lead_time')}
-                      className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle size={14} />
-                      Solicitar via WhatsApp
-                    </button>
-                  </div>
-                )}
-
-                {date && time && guests && (totalGuestsForDate + guests > CAPACITY_LIMIT) && (
-                  <div className="p-4 bg-red-50 border-t border-[#D9CFC1] flex flex-col gap-3 animate-in fade-in duration-300">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                      <p className="text-[11px] leading-relaxed text-red-800 font-medium">
-                          A capacidade para este turno foi atingida no sistema. Fale conosco no WhatsApp para verificar disponibilidades extras.
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => handleWhatsAppRedirect('capacity_overflow')}
-                      className="w-full bg-[#25D366] text-white rounded-xl py-3 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle size={14} />
-                      Falar no WhatsApp
-                    </button>
-                  </div>
-                )}
-
-                {/* Aviso sobre Eventos Especiais ou Taxas de Grupo */}
-                {guests && requiresPayment && (
-                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex flex-col gap-2 animate-in fade-in duration-300">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                      <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
-                        {specialDateInfo?.requires_fee 
-                          ? <span><strong>{specialDateInfo.description || 'Data Especial'}:</strong> Requer pagamento de taxa de reserva de R$ {Number(specialDateInfo.fee_amount).toFixed(2).replace('.', ',')} (100% revertido em consumação).</span>
-                          : <span><strong>Reserva de Grupo:</strong> 15 ou mais pessoas requerem pagamento de taxa de R$ 100,00 (100% revertido em consumação).</span>
-                        }
-                      </p>
-                    </div>
-                    <p className="text-[9px] text-red-700 font-bold leading-tight pl-8">
-                      *Tolerância de 20 min. O valor não é reembolsável em caso de atraso ou cancelamento.
-                    </p>
-                  </div>
-                )}
-
-                {date && guests && time && checkLeadTime(date, time) && decorations.length > 0 && (
-                  <div className="border-t border-[#D9CFC1] p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/60">Espaço ou decoração (Opcional)</p>
-                        <p className="mt-1 text-[10px] text-[#4A3728]/45">Escolha uma opção para a sua ocasião.</p>
-                      </div>
-                      {decorationId && <button type="button" onClick={() => setDecorationId('')} className="text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/60">Limpar</button>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {decorations.map((decoration) => (
-                        <button
-                          type="button"
-                          key={decoration.id}
-                          disabled={!decoration.available}
-                          onClick={() => setDecorationId(decoration.id)}
-                          className={`overflow-hidden rounded-xl border text-left transition-all ${decoration.available ? decorationId === decoration.id ? 'border-[#4A3728] ring-1 ring-[#4A3728]' : 'border-[#D9CFC1]' : 'cursor-not-allowed border-[#D9CFC1] opacity-45'}`}
-                        >
-                          <Image src={decoration.image_url} alt="" width={400} height={160} unoptimized className="h-20 w-full object-cover" />
-                          <span className="block px-3 py-2 text-[10px] font-bold text-[#4A3728]">
-                            {decoration.name}
-                            {!decoration.available && <small className="block pt-1 text-[8px] font-medium uppercase tracking-wide">Indisponível neste período</small>}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* CAMPO 4: ALGUMA OBSERVAÇÃO? (OPCIONAL) */}
-                {date && guests && time && checkLeadTime(date, time) && (
-                  <div className="p-4 border-t border-[#D9CFC1]">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#4A3728]/60 mb-2">
-                      Alguma Observação? (Opcional)
-                    </label>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Ex.: Aniversário, alergia, cadeirinha de bebê..."
-                      className="w-full px-4 py-3 bg-[#FDFBF7] border border-[#D9CFC1] rounded-xl text-sm focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none resize-none h-20 placeholder:text-[#4A3728]/45 text-[#4A3728]"
-                    />
-                  </div>
-                )}
-
-                {/* DADOS DO CLIENTE */}
-                {date && guests && time && checkLeadTime(date, time) && (totalGuestsForDate + guests <= CAPACITY_LIMIT) && (
-                  <div className="p-4 border-t border-[#D9CFC1] bg-stone-50/50 space-y-3 animate-in fade-in duration-500">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60 mb-1">
-                      Seus Dados
-                    </p>
-                    <div>
-                      <input
-                        type="text"
-                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
-                          formErrors.name ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
-                        }`}
-                        value={formData.name}
-                        onChange={(e) => {
-                          setFormData({...formData, name: e.target.value});
-                          if (formErrors.name) setFormErrors({...formErrors, name: ''});
-                        }}
-                        placeholder="Nome completo"
-                      />
-                      {formErrors.name && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.name}</p>}
-                    </div>
-                    <div>
-                      <input
-                        type="email"
-                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
-                          formErrors.email ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
-                        }`}
-                        value={formData.email}
-                        onChange={(e) => {
-                          setFormData({...formData, email: e.target.value});
-                          if (formErrors.email) setFormErrors({...formErrors, email: ''});
-                        }}
-                         placeholder="E-mail (opcional): joao@email.com"
-                      />
-                      {formErrors.email && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.email}</p>}
-                    </div>
-                    <div>
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
-                          formErrors.whatsapp ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
-                        }`}
-                        value={formData.whatsapp}
-                        onChange={(e) => {
-                          setFormData({...formData, whatsapp: formatPhoneNumber(e.target.value)});
-                          if (formErrors.whatsapp) setFormErrors({...formErrors, whatsapp: ''});
-                        }}
-                        placeholder="WhatsApp: (69) 99999-9999"
-                      />
-                      {formErrors.whatsapp && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.whatsapp}</p>}
-                    </div>
-                    <div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="off"
-                        required
-                        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:ring-1 outline-none placeholder:text-[#4A3728]/40 text-[#4A3728] ${
-                          formErrors.cpf ? 'border-red-500 focus:ring-red-500' : 'border-[#D9CFC1] focus:ring-[#4A3728]'
-                        }`}
-                        value={formData.cpf}
-                        onChange={(e) => {
-                          setFormData({...formData, cpf: formatCpf(e.target.value)});
-                          if (formErrors.cpf) setFormErrors({...formErrors, cpf: ''});
-                        }}
-                        placeholder="CPF do cliente (obrigatório)"
-                      />
-                      {formErrors.cpf && <p className="text-red-500 text-[9px] mt-1 ml-1 font-medium">{formErrors.cpf}</p>}
-                      <p className="ml-1 mt-1 text-[8px] text-[#4A3728]/50">Obrigatório para concluir a reserva.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* POLÍTICA DE ATRASO / CONCORDÂNCIA */}
-                {date && guests && time && formData.name && formData.whatsapp && isValidCpf(formData.cpf) && (
-                  <div className="p-4 bg-amber-50 border-t border-[#D9CFC1] flex items-start gap-3 animate-in fade-in duration-300">
-                    <input
-                      id="terms-check"
-                      type="checkbox"
-                      checked={policyAccepted}
-                      onChange={(e) => setPolicyAccepted(e.target.checked)}
-                      className="w-5 h-5 rounded-md border-amber-300 text-[#4A3728] focus:ring-[#4A3728] cursor-pointer mt-0.5"
-                    />
-                    <label htmlFor="terms-check" className="text-[11px] leading-normal text-amber-900 cursor-pointer font-medium">
-                      Estou ciente da política de <strong className="text-red-700">20 min de tolerância</strong>
-                      {requiresPayment && (
-                        <> e que a taxa de reserva <strong className="text-red-700">não é reembolsável</strong> em caso de atraso ou cancelamento</>
-                      )}.
-                    </label>
-                  </div>
-                )}
-
-                {/* BOTÃO DE CONFIRMAÇÃO */}
-                <div className="p-4 border-t border-[#D9CFC1] bg-white rounded-b-[28px]">
-                  <button
-                    disabled={!date || !guests || !time || !formData.name || !formData.whatsapp || !isValidCpf(formData.cpf) || !policyAccepted || isSubmitting}
-                    onClick={async () => {
-                      if (validateForm()) {
-                        await handleSubmit();
-                      }
-                    }}
-                    className={`duna-submit w-full py-4 text-white rounded-2xl font-bold uppercase tracking-[2px] text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
-                       policyAccepted && date && guests && time && formData.name && formData.whatsapp && isValidCpf(formData.cpf)
-                       ? 'is-ready active:scale-[0.98]'
-                      : 'bg-stone-300 cursor-not-allowed shadow-none text-stone-500'
-                    }`}
-                  >
-                    {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : getConfirmationText()}
-                  </button>
-                </div>
-                  </>
-                )}
-
-              </div>
-              <div className="duna-trust mt-5 flex items-center justify-center gap-3 text-[#d8a34c]">
-                <span className="h-px flex-1 bg-current opacity-50" />
-                <ShieldCheck size={18} />
-                <span className="h-px flex-1 bg-current opacity-50" />
-              </div>
-              <p className="text-center text-[9px] uppercase tracking-wider text-[#e8d6ba]/70 mt-2">
-                Tolerância de 20min · Serviço à la carte
-              </p>
+            <div className="duna-booking-surface p-5 sm:p-7">
+              <PublicReservationForm
+                step={bookingStep}
+                onStepChange={setBookingStep}
+                selection={selection}
+                onSelectionChange={updateSelection}
+                contact={formData}
+                onContactChange={setFormData}
+                availability={{ dates: datesList, availableTimes: availableTimesByDate, timeTurns: timeTurnsByDate, turnTotals, fullDates: fullyBookedDates, blockedDates: allBlockedDates, specialDates: allSpecialDates, loading: loadingAvailability, error: availabilityError }}
+                onRetryAvailability={() => void fetchFullDates()}
+                decorations={decorations}
+                decorationsLoading={decorationsLoading}
+                decorationsError={decorationsError}
+                onRetryDecorations={() => setDecorationRequest((current) => current + 1)}
+                isSubmitting={isSubmitting}
+                submissionError={submissionError}
+                onSubmit={handleSubmit}
+                whatsappNumber={WHATSAPP_NUMBER}
+              />
             </div>
           ) : (
             /* VISUALIZAÇÃO: MINHAS RESERVAS */
-            <div className="p-6 animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="duna-booking-surface p-5 sm:p-7 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="mb-8">
                   <h2 className="text-lg font-serif font-bold mb-2 text-[#4A3728]">Minhas Reservas 🔎</h2>
-                <p className="text-[11px] opacity-60 leading-relaxed uppercase tracking-widest text-[#4A3728]">
-                  As reservas feitas neste dispositivo ficam disponíveis aqui. Informe seu WhatsApp apenas para filtrar.
+                <p className="text-sm leading-relaxed text-[#76695e]">
+                  Informe o telefone da reserva. A consulta usa o acesso salvo neste navegador.
                 </p>
               </div>
 
                <div className="space-y-4 mb-8">
-                <div className="relative">
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    placeholder="Filtrar por WhatsApp (opcional)"
-                    value={searchPhone}
-                    onChange={(e) => setSearchPhone(formatPhoneNumber(e.target.value))}
-                    className="w-full px-5 py-4 bg-white border border-[#D9CFC1] rounded-2xl text-base focus:ring-1 focus:ring-[#4A3728] focus:border-[#4A3728] outline-none shadow-sm transition-all"
-                  />
-                  <button 
-                    onClick={fetchUserReservations}
-                    disabled={isSearching}
-                    className="absolute right-2 top-2 bottom-2 px-4 bg-[#4A3728] text-white rounded-xl flex items-center justify-center disabled:opacity-50 transition-all active:scale-95"
-                  >
-                    {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
-                  </button>
-                 </div>
-                 <div className="rounded-2xl border border-[#D9CFC1] bg-[#F5F2ED] p-4">
-                   <p className="mb-3 flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-[#4A3728]/70">
-                     <ShieldCheck size={14} /> Acessar de outro dispositivo
-                   </p>
-                   <div className="flex gap-2">
-                     <input
-                       type="email"
-                       placeholder="Seu e-mail da reserva"
-                       value={recoveryEmail}
-                       onChange={(event) => setRecoveryEmail(event.target.value)}
-                       className="min-w-0 flex-1 rounded-xl border border-[#D9CFC1] bg-white px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-[#4A3728]"
-                     />
-                     <button type="button" onClick={requestRecoveryCode} className="rounded-xl bg-[#4A3728] px-3 text-[9px] font-bold uppercase tracking-wider text-white">
-                       Enviar código
-                     </button>
-                   </div>
-                   {recoveryChallengeId && (
-                     <div className="mt-2 flex gap-2">
-                       <input
-                         inputMode="numeric"
-                         maxLength={6}
-                         placeholder="Código de 6 dígitos"
-                         value={recoveryCode}
-                         onChange={(event) => setRecoveryCode(event.target.value.replace(/\D/g, ''))}
-                         className="min-w-0 flex-1 rounded-xl border border-[#D9CFC1] bg-white px-3 py-2.5 text-xs outline-none focus:ring-1 focus:ring-[#4A3728]"
-                       />
-                       <button type="button" onClick={verifyRecoveryCode} className="rounded-xl border border-[#4A3728]/30 px-3 text-[9px] font-bold uppercase tracking-wider text-[#4A3728]">
-                         Validar
-                       </button>
-                     </div>
-                   )}
-                   {recoveryMessage && <p className="mt-2 text-[10px] text-[#4A3728]/70">{recoveryMessage}</p>}
-                 </div>
+                <form noValidate onSubmit={(event) => { event.preventDefault(); void fetchUserReservations(); }}>
+                  <FieldLabel htmlFor="reservation-search-phone">Telefone com DDD</FieldLabel>
+                  <div className="flex gap-2">
+                    <Input id="reservation-search-phone" type="tel" inputMode="tel" autoComplete="tel-national"
+                      required disabled={isSearching} placeholder="(69) 99999-9999" value={searchPhone}
+                      aria-describedby={searchError ? 'reservation-search-error' : undefined}
+                      onChange={(event) => {
+                        setSearchPhone(formatPhoneNumber(event.target.value));
+                        setHasSearched(false);
+                        setSearchError('');
+                        setUserReservations([]);
+                      }} className="min-w-0 flex-1 text-base" />
+                    <Button type="submit" disabled={isSearching}>
+                      {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />} Consultar
+                    </Button>
+                  </div>
+                </form>
+                {searchError && <Feedback id="reservation-search-error" tone="error" role="alert">{searchError}</Feedback>}
+                <div className="space-y-3">
+                  <p className="text-sm text-[#76695e]">Não conseguiu consultar sua reserva?</p>
+                  <ButtonLink variant="whatsapp" href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" className="w-full">
+                    <MessageCircle size={18} /> Entrar em contato no WhatsApp
+                  </ButtonLink>
+                </div>
                </div>
 
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
-                {hasSearched && userReservations.length === 0 && !isSearching && (
-                  <div className="text-center py-12 px-6 bg-white/50 rounded-[32px] border border-dashed border-[#D9CFC1]">
+                {hasSearched && userReservations.length === 0 && !isSearching && !searchError && (
+                  <div role="status" className="text-center py-8 px-6 bg-white/50 rounded-[24px] border border-dashed border-[#D9CFC1]">
                     <div className="w-12 h-12 bg-[#F5F2ED] rounded-full flex items-center justify-center mx-auto mb-4">
                       <XCircle size={24} className="text-[#4A3728]/30" />
                     </div>
                     <p className="text-sm font-medium">Nenhuma reserva encontrada</p>
-                    <p className="text-[10px] opacity-50 mt-1">Verifique se o número está correto.</p>
+                    <p className="mt-2 text-sm text-[#76695e]">Confira o telefone ou fale com a equipe pelo WhatsApp.</p>
                   </div>
                 )}
 
