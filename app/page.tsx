@@ -28,7 +28,7 @@ export default function DunaGastrobarReservation() {
   const [guests, setGuests] = useState<number | null>(null);
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
-  const [formData, setFormData] = useState<PublicReservationContact>({ name: '', whatsapp: '', cpf: '' });
+  const [formData, setFormData] = useState<PublicReservationContact>({ name: '', whatsapp: '', cpf: '', email: '' });
   const [submissionError, setSubmissionError] = useState('');
   const submissionRef = useRef(false);
   
@@ -237,10 +237,10 @@ export default function DunaGastrobarReservation() {
       setDecorationsLoading(Boolean(next.time));
       setDecorationsError('');
     }
-    // Não mantém CPF de uma seleção paga quando a reserva volta a ser gratuita.
+    // Não mantém dados de pagamento quando a reserva volta a ser gratuita.
     const nextPayment = getReservationPayment(next.guests === undefined ? guests || 0 : next.guests || 0,
       next.specialDate === undefined ? specialDateInfo : next.specialDate);
-    if (!nextPayment.required) setFormData((current) => ({ ...current, cpf: '' }));
+    if (!nextPayment.required) setFormData((current) => ({ ...current, cpf: '', email: '' }));
     setSubmissionError('');
   };
 
@@ -276,7 +276,7 @@ export default function DunaGastrobarReservation() {
     setGuests(null);
     setTime('');
     setNotes('');
-    setFormData({ name: '', whatsapp: '', cpf: '' });
+    setFormData({ name: '', whatsapp: '', cpf: '', email: '' });
     setBookingStep('reservation');
     setSubmissionError('');
     setIsSuccess(false);
@@ -304,7 +304,7 @@ export default function DunaGastrobarReservation() {
       const response = await fetch('/api/payments/pix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reservationId: id, accessToken, cpf }),
+        body: JSON.stringify({ reservationId: id, accessToken, cpf, email: formData.email }),
       });
       const data = await response.json();
 
@@ -334,7 +334,7 @@ export default function DunaGastrobarReservation() {
         body: JSON.stringify({
           name: formData.name,
           whatsapp: formData.whatsapp,
-          ...(paymentRule.required ? { cpf: formData.cpf } : {}),
+          ...(paymentRule.required ? { cpf: formData.cpf, email: formData.email } : {}),
           date,
           time,
           guests: finalGuests,

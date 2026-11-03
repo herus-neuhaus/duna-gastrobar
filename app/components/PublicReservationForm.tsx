@@ -10,7 +10,7 @@ import { FieldLabel, Input, Textarea } from '@/components/ui/form-controls';
 import { Feedback } from '@/components/ui/feedback';
 import CalendarPicker from '@/app/components/CalendarPicker';
 import ReservationProgress from '@/app/components/ReservationProgress';
-import { getReservationPayment } from '@/lib/reservation-payment';
+import { getReservationPayment, RESERVATION_PAYMENT_EMAIL_MAX_LENGTH } from '@/lib/reservation-payment';
 import {
   formatReservationCpf, hasReservationLeadTime, validatePublicReservationContact,
   PUBLIC_RESERVATION_HORIZON_DAYS, RESERVATION_MIN_LEAD_HOURS,
@@ -166,7 +166,7 @@ export default function PublicReservationForm(props: Props) {
       const nextErrors = validatePublicReservationContact(contact, payment.required);
       setErrors(nextErrors);
       setTermsError(termsAccepted ? '' : 'Confirme que leu as condições da reserva.');
-      const firstInvalid = (['name', 'whatsapp', 'cpf'] as const).find((field) => nextErrors[field]);
+      const firstInvalid = (['name', 'whatsapp', 'email', 'cpf'] as const).find((field) => nextErrors[field]);
       if (firstInvalid) {
         const field = document.getElementById(`booking-${firstInvalid}`);
         field?.focus();
@@ -252,7 +252,7 @@ export default function PublicReservationForm(props: Props) {
             </div> : <Feedback tone="warning">Não há horários disponíveis para {guests} pessoas nesta data. Escolha outra data ou quantidade.</Feedback>}
           </fieldset>}
 
-          {payment.required && paymentValid && <Feedback tone="warning"><p>Esta reserva requer pagamento antecipado de <strong>{currency(payment.amount)}</strong>, revertido em consumação.</p><p className="mt-1">Você informará o CPF na próxima etapa para gerar o PIX.</p></Feedback>}
+          {payment.required && paymentValid && <Feedback tone="warning"><p>Esta reserva requer pagamento antecipado de <strong>{currency(payment.amount)}</strong>, revertido em consumação.</p><p className="mt-1">Você informará e-mail e CPF na próxima etapa para gerar o PIX.</p></Feedback>}
           {!paymentValid && <Feedback tone="error">Não foi possível obter o valor desta reserva. Fale com a equipe antes de continuar.</Feedback>}
 
           {date && time && !hasReservationLeadTime(date, time) && <Feedback tone="warning"><p>Este horário tem menos de {RESERVATION_MIN_LEAD_HOURS} horas de antecedência. Consulte nossa equipe pelo WhatsApp.</p><ButtonLink variant="secondary" href={`${helpUrl}?text=${encodeURIComponent(`Olá! Gostaria de reservar para ${displayDate(date)}, às ${time}, para ${guests} pessoas, com menos de ${RESERVATION_MIN_LEAD_HOURS} horas de antecedência.`)}`} target="_blank" rel="noopener noreferrer" className="mt-3">Consultar a equipe</ButtonLink></Feedback>}
@@ -280,6 +280,12 @@ export default function PublicReservationForm(props: Props) {
               <Input id="booking-whatsapp" name="tel" type="tel" inputMode="tel" autoComplete="tel-national" required value={contact.whatsapp} maxLength={16} placeholder="(69) 99999-9999" onChange={(event) => changeContact('whatsapp', event.target.value)} aria-invalid={Boolean(errors.whatsapp)} aria-describedby={errors.whatsapp ? 'booking-whatsapp-error' : undefined} />
               {errors.whatsapp && <p id="booking-whatsapp-error" className="mt-1 text-sm text-red-800">{errors.whatsapp}</p>}
             </div>
+            {payment.required && <div>
+              <FieldLabel htmlFor="booking-email">E-mail para pagamento</FieldLabel>
+              <Input id="booking-email" name="email" type="email" autoComplete="email" required value={contact.email} maxLength={RESERVATION_PAYMENT_EMAIL_MAX_LENGTH} onChange={(event) => changeContact('email', event.target.value)} aria-invalid={Boolean(errors.email)} aria-describedby={`booking-email-help${errors.email ? ' booking-email-error' : ''}`} />
+              <p id="booking-email-help" className="mt-2 text-xs leading-5 text-[#76695e]">Exigido pelo provedor de pagamento para gerar o PIX.</p>
+              {errors.email && <p id="booking-email-error" className="mt-1 text-sm text-red-800">{errors.email}</p>}
+            </div>}
             {payment.required && <div>
               <FieldLabel htmlFor="booking-cpf">CPF para pagamento</FieldLabel>
               <Input id="booking-cpf" name="cpf" inputMode="numeric" autoComplete="off" required value={contact.cpf} maxLength={14} onChange={(event) => changeContact('cpf', formatReservationCpf(event.target.value))} aria-invalid={Boolean(errors.cpf)} aria-describedby={`booking-cpf-help${errors.cpf ? ' booking-cpf-error' : ''}`} />

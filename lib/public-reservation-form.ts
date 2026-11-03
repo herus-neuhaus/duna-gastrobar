@@ -1,9 +1,10 @@
 import { isValidCpf } from '@/lib/cpf';
+import { isValidReservationPaymentEmail } from '@/lib/reservation-payment';
 
 export const PUBLIC_RESERVATION_HORIZON_DAYS = 60;
 export const RESERVATION_MIN_LEAD_HOURS = 2;
 
-export type PublicReservationContact = { name: string; whatsapp: string; cpf: string };
+export type PublicReservationContact = { name: string; whatsapp: string; cpf: string; email: string };
 export type PublicReservationContactErrors = Partial<Record<keyof PublicReservationContact, string>>;
 
 export function validatePublicReservationContact(contact: PublicReservationContact, requiresPayment: boolean) {
@@ -16,6 +17,9 @@ export function validatePublicReservationContact(contact: PublicReservationConta
   }
   if (requiresPayment && !isValidCpf(contact.cpf)) {
     errors.cpf = 'Informe um CPF válido para gerar o pagamento.';
+  }
+  if (requiresPayment && !isValidReservationPaymentEmail(contact.email.trim())) {
+    errors.email = 'Informe um e-mail válido, com até 64 caracteres, para gerar o PIX.';
   }
   return errors;
 }

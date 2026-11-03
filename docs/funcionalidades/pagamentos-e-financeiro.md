@@ -8,13 +8,42 @@ O fluxo documentado cobre taxas de reserva pagas via PIX e consulta administrati
 
 `POST /api/payments/pix`:
 
-1. Recebe ID da reserva, CPF e token de acesso. Valida CPF e formato do token.
+1. Recebe ID da reserva, CPF, token de acesso e e-mail opcional no payload (usa o salvo quando não informado). Valida CPF e formato do token; só após verificar o hash do token aceita o contato.
 2. Localiza a reserva e compara hash do token; rejeita cancelada, já paga, sem pagamento pendente ou valor inválido.
-3. Cria ordem Pagar.me com idempotency key baseada na reserva e finalidade `reservation_fee`; pede transação PIX com validade de 30 minutos.
+3. Exige e-mail válido, normalizado e de até 64 caracteres antes de chamar o provedor. Não inventa contato nem trunca endereço. Cria ordem Pagar.me com e-mail obrigatório do comprador, idempotency key baseada na reserva e finalidade `reservation_fee`; pede transação PIX com validade de 30 minutos.
 4. Confere o valor retornado pelo provedor e usa `lib/reservation-payment-persistence.ts`: insere por `provider,provider_order_id` ignorando conflito, verifica o vínculo/valor existente e só atualiza expiração de pagamento ainda `pending`. Não sobrescreve status/`paid_at` de um pagamento existente com uma resposta pendente.
-5. Atualiza CPF/expiração somente enquanto `reservations.payment_status='pending'`, sem escrever esse status novamente. Retorna ordem, QR Code, link e expiração à interface. Se o provedor já retornar `paid`, persiste/confirma o pagamento mesmo sem QR Code e retorna o conflito já usado para reserva paga (HTTP 409); a consulta protegida por token continua sendo a fonte de estado para a tela.
+5. Atualiza CPF/e-mail/expiração somente enquanto `reservations.payment_status='pending'`, sem escrever esse status novamente. Retorna ordem, QR Code, link e expiração à interface. Se o provedor já retornar `paid`, persiste/confirma o pagamento mesmo sem QR Code e retorna o conflito já usado para reserva paga (HTTP 409); a consulta protegida por token continua sendo a fonte de estado para a tela.
 
 Arquivo: `app/api/payments/pix/route.ts`; chamadas HTTP em `lib/pagarme.ts`. Segredos não devem ser enviados ao cliente.
+
+### E-mail para PIX — ajuste aprovado em 03/11/2026
+
+Após observar HTTP 500 com ausência de QR Code, a conferência da
+[documentação PIX](https://docs.pagar.me/reference/pix-2) confirmou a exigência de
+`customer.name`, `email`, `document` e `phones`. O [contrato de cliente](https://docs.pagar.me/reference/criar-cliente-1)
+limita e-mail a 64 caracteres. O HAR não contém o motivo retornado pelo gateway;
+isso comprova uma incompatibilidade no fluxo sem e-mail, mas não demonstra a
+causa exata daquela ordem específica.
+
+O responsável aprovou coletar e-mail **somente quando houver pagamento**, incluindo
+eventos pagos abaixo de 15 pessoas. Nome/telefone continuam suficientes para a
+reserva pública gratuita. Formulário, criação de reserva e geração PIX validam o
+mesmo limite; na geração PIX, a API retorna `PAYMENT_EMAIL_REQUIRED` sem gravar ou
+chamar o provedor quando faltar e-mail compatível. Na criação, e-mail malformado
+é rejeitado pela validação de contato; ausência/limite incompatível com pagamento
+também retorna `PAYMENT_EMAIL_REQUIRED`. A regra vem da quantidade efetiva e
+do evento, não da alegação de pagamento enviada pelo cliente.
+
+Diagnóstico de ausência de QR registra somente estados em allowlist, eventual
+código HTTP numérico e presença de erros. Não registra ordem completa, mensagens
+livres do gateway, e-mail/CPF/telefone, cookies, tokens ou código PIX. O mock do
+provedor nos testes agora exige os quatro dados do comprador, além das assertions
+do e-mail enviado. Isso não substitui Pagar.me sandbox nem prova de emissão real.
+
+Implementação local, sem migration, deploy ou reparação remota. A chave de
+idempotência não foi alterada: uma ordem anteriormente recusada pode continuar
+retornando falha. Conferir seu estado antes de aprovar outra tentativa/cobrança;
+não recriar reserva, trocar a chave ou gerar contato fictício para contornar o erro.
 
 ## Confirmação de pagamento
 
@@ -46,7 +75,7 @@ foi explicitamente adiada pelo responsável; o fluxo existente não foi alterado
 - Em falha do pagamento, avisar ao cliente que a equipe do restaurante entrará em contato e marcar a reserva/pagamento para acompanhamento da equipe. Em expiração do PIX, registrar `expired` e oferecer à equipe a opção de contatar o cliente. A rota atual não processa esses eventos nem possui essa sinalização de acompanhamento.
 - Ao alterar uma reserva existente de menos de 15 para 15 ou mais pessoas, a interface deve informar a taxa de R$ 100 assim que a quantidade atingir o limite; ao confirmar, deve iniciar o PIX e exibir o QR Code. A alteração deve ficar pendente: manter a quantidade original até o pagamento ser confirmado, e só então aplicar a nova quantidade. A criação pública já informa a regra de grupo e inicia o PIX quando requerido, mas o fluxo de edição atual chama diretamente `PATCH /api/reservations/:id`; a modal de pagamento em `app/page.tsx` não tem caminho que a abra, e a atualização não cria uma cobrança. O teste `OUT-02` está marcado como `todo`, mas essa decisão de negócio foi confirmada pelo responsável; o teste e a implementação ainda precisam ser atualizados.
 - Se a pessoa informar CPF que corresponda a uma reserva ativa na mesma data e turno/período de atendimento e tentar reservar pessoas adicionais, o sistema deve perguntar se quer acrescentar à reserva existente ou fazer outra. Almoço e jantar são períodos distintos: não pesquisar uma reserva de jantar ao solicitar almoço, nem o contrário. Se acrescentar pessoas a uma reserva de 15+ já paga, não deve cobrar outra taxa de R$ 100. Deve verificar o CPF e abrir `wa.me` para o cliente enviar manualmente nome, dados da reserva e a opção escolhida ao número do restaurante já configurado. Não incluir CPF na mensagem. A busca por CPF e turno está implementada no handler público; registros históricos sem turno classificado não entram na comparação, pois não é seguro inferir almoço/jantar. Em caso de correspondência, o sistema não cria outra reserva automaticamente: oferece as opções e encaminha a escolha à equipe pelo WhatsApp.
-- **Decisão atual de 29/10/2026, substituindo CPF obrigatório em toda reserva:** no fluxo público, pedir somente nome e telefone quando não houver pagamento; pedir também CPF quando houver pagamento (15+ ou data especial paga, qualquer quantidade). Não pedir e-mail nesse formulário. A API mantém compatibilidade com e-mail/CPF opcionais de outros consumidores e exige CPF válido quando calcula pagamento. A migration `20261029234421_cpf_apenas_reservas_com_pagamento.sql` ajusta a exigência no banco; aplicada no Duna em 03/11/2026 como versão remota `20261103194610` ([registro](../implantacao-reservas-2026-11-03.md)). Não apaga CPF/e-mail histórico. O formulário administrativo não foi redesenhado nesta etapa.
+- **Decisões de 29/10 e 03/11/2026, substituindo CPF obrigatório em toda reserva:** no fluxo público, pedir somente nome e telefone quando não houver pagamento; pedir também CPF e e-mail quando houver pagamento (15+ ou data especial paga, qualquer quantidade). A decisão inicial de não coletar e-mail foi revista em 03/11 por exigência documentada do PIX Pagar.me. A API mantém contato opcional em reservas gratuitas e exige CPF/e-mail válidos quando calcula pagamento, inclusive para o consumidor administrativo. A migration `20261029234421_cpf_apenas_reservas_com_pagamento.sql` ajusta somente a exigência de CPF no banco; aplicada no Duna em 03/11/2026 como versão remota `20261103194610` ([registro](../implantacao-reservas-2026-11-03.md)). E-mail usa coluna existente, sem nova migration. Não apaga dados históricos; no painel, só o campo de e-mail existente passa a indicar obrigatoriedade no pagamento.
 - Para grupos de 15 ou mais, a taxa confirmada é R$ 100,00. A criação pública já exibe o aviso e cria PIX; a alteração de reserva existente ainda não completa esse fluxo.
 
 O requisito de WhatsApp acima é abrir um link `wa.me` com a mensagem pronta para o cliente enviar manualmente. A tela pública oferece as opções de acrescentar pessoas ou fazer outra reserva e prepara a mensagem com nome e dados da reserva, sem CPF. CRUD de templates existe, mas não foi localizado envio automatizado por provedor — e não é solicitado nesta regra.

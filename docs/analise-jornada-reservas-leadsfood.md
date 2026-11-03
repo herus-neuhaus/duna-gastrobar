@@ -148,7 +148,7 @@ Observadas no código/documentação local, sem revalidar produção:
 - Tolerância comunicada de vinte minutos.
 - Pagamento de grupo a partir de quinze pessoas: R$ 100 no helper atual;
   evento pago usa seu valor com precedência, sem somar as duas cobranças.
-- CPF somente quando necessário ao pagamento; sem e-mail no novo formulário.
+- Decisão inicial: CPF somente quando necessário ao pagamento, sem e-mail no novo formulário. **Revisada em 03/11/2026:** e-mail também é exigido no fluxo pago pelo contrato PIX Pagar.me; reservas gratuitas continuam sem esse campo. Ver [financeiro](funcionalidades/pagamentos-e-financeiro.md).
 - Reserva gratuita solicitada não deve ser rotulada automaticamente como confirmada.
 - Disponibilidade consultada não garante vaga até a validação na criação.
 - PIX é gerado para a reserva já criada; tentar novamente não deve criar outra.

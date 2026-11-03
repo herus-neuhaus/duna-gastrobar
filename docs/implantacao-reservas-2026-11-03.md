@@ -119,3 +119,31 @@ Build Next.js desta correção também passou pelo wrapper isolado, com configur
 fictícia e bloqueio de rede de negócio. O `.next` resultante não pode ser usado para
 deploy. Houve aviso não bloqueante de Browserslist desatualizado; nenhuma instalação
 ou atualização incidental foi feita.
+
+## Ajuste posterior de contato PIX — e-mail (somente local)
+
+O responsável aprovou novamente o e-mail no formulário **apenas quando houver
+pagamento**, após conferir a exigência na documentação PIX Pagar.me. O HAR de erro
+indicava ausência de QR Code, mas não continha a justificativa do gateway; não é
+prova da causa específica da ordem. Nenhum HAR, contato ou credencial real foi
+copiado para código/fixtures.
+
+Formulário público, API de criação e geração PIX agora validam e-mail. O campo
+administrativo existente indica obrigatoriedade quando houver pagamento. Endereços
+acima dos 64 caracteres do contrato são rejeitados em vez de truncados. A geração
+aceita e-mail salvo ou informado com token válido e só grava contato enquanto o
+pagamento da reserva continua pendente. Diagnóstico de ausência de QR Code usa
+somente estados em allowlist/código HTTP e presença de erros, sem dump da ordem.
+
+Verificações desta etapa: TypeScript, lint, `git diff --check`, **217 testes em
+30 arquivos** e build isolado com integrações fictícias passaram. Inclui validação
+do e-mail obrigatório no mock de criação de ordem; não comprova emissão real de
+QR Code. Não houve navegador/E2E novo, sandbox Pagar.me, PostgreSQL concorrente
+nem revisão independente. O artefato `.next` fictício não pode ser publicado.
+
+Sem nova migration, backfill, nova chave de idempotência, recriação de reserva ou
+reparação de ordem existente. Não houve deploy ou operação remota nesta correção.
+Horizonte de 60 dias, antecedência de 2h e adiamento da edição 14→15 permanecem.
+Antes de tentar recuperar uma cobrança anteriormente recusada, conferir o pedido
+existente no provedor e aprovar a operação separadamente; não contornar a falha
+gerando outra cobrança às cegas.

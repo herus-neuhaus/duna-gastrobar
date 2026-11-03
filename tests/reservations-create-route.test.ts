@@ -109,13 +109,31 @@ describe('POST /api/reservations capacity controls', () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it.each([15, 30])('requires payment for %i guests with a valid CPF', async (guests) => {
+  it.each([15, 30])('requires payment for %i guests with a valid CPF and email', async (guests) => {
     mocks.isPanelStaff.mockResolvedValue(false);
     const { insert } = setup();
-    const response = await POST(request({ ...standardBody, guests, email: undefined }));
+    const response = await POST(request({ ...standardBody, guests, email: ' Guest@Example.Invalid ' }));
     expect(response.status).toBe(201);
-    expect(insert.mock.calls[0]?.[0]).toMatchObject({ payment_status: 'pending', payment_amount: 100, num_guests: guests });
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ payment_status: 'pending', payment_amount: 100, num_guests: guests, email: 'guest@example.invalid' });
     expect(await response.json()).toMatchObject({ paymentRequired: true, paymentAmount: 100 });
+  });
+
+  it.each([undefined, '', `${'x'.repeat(49)}@example.invalid`])('rejects paid creation without provider-compatible email: %s', async (email) => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup();
+    const response = await POST(request({ ...standardBody, guests: 15, email, paymentRequired: false }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'PAYMENT_EMAIL_REQUIRED' });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('requires email for a paid event with fewer than 15 guests', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup({ specialDates: [{ id: 'event', date: standardBody.date, included_guests: 2, requires_fee: true, fee_amount: 75 }] });
+    const response = await POST(request({ ...standardBody, email: '', specialDateId: 'event' }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'PAYMENT_EMAIL_REQUIRED' });
+    expect(insert).not.toHaveBeenCalled();
   });
 
   it('requires CPF for a paid special date even for two guests', async () => {
@@ -147,9 +165,9 @@ describe('POST /api/reservations capacity controls', () => {
   it('allows a free special date below 15 guests without CPF', async () => {
     mocks.isPanelStaff.mockResolvedValue(false);
     const { insert } = setup({ specialDates: [{ id: 'synthetic-event', date: standardBody.date, included_guests: 4, requires_fee: false, fee_amount: null }] });
-    const response = await POST(request({ ...standardBody, cpf: undefined, specialDateId: 'synthetic-event' }));
+    const response = await POST(request({ ...standardBody, cpf: undefined, email: undefined, specialDateId: 'synthetic-event' }));
     expect(response.status).toBe(201);
-    expect(insert.mock.calls[0]?.[0]).toMatchObject({ cpf: null, num_guests: 4, payment_status: 'not_required' });
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ cpf: null, email: null, num_guests: 4, payment_status: 'not_required' });
   });
 
   it('returns a WhatsApp-choice conflict for an active reservation with the same CPF and turn', async () => {

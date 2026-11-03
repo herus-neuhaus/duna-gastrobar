@@ -37,9 +37,9 @@ function order(status = 'paid', amount = 10000) {
   };
 }
 
-function pixRequest(token = accessToken) {
+function pixRequest(token = accessToken, email?: string) {
   return new Request('http://localhost/api/payments/pix', {
-    method: 'POST', body: JSON.stringify({ reservationId, accessToken: token, cpf: '52998224725' }),
+    method: 'POST', body: JSON.stringify({ reservationId, accessToken: token, cpf: '52998224725', ...(email !== undefined ? { email } : {}) }),
   });
 }
 
@@ -115,7 +115,7 @@ describe('PIX and paid webhook monotonic persistence', () => {
     mocks.admin.mockReset(); mocks.provider.mockReset();
     payments = []; operations = []; paymentEvents = 0; failCompletion = false; beforeWrite = undefined;
     reservation = {
-      id: reservationId, name: 'Synthetic guest', whatsapp: '69912345678', status: 'pending',
+      id: reservationId, name: 'Synthetic guest', email: 'guest@example.invalid', whatsapp: '69912345678', status: 'pending',
       payment_status: 'pending', payment_amount: 100,
       reservation_access_token_hash: hashReservationAccessToken(accessToken),
     };
@@ -123,7 +123,15 @@ describe('PIX and paid webhook monotonic persistence', () => {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { fetch: databaseFetch },
     }));
-    mocks.provider.mockImplementation(async (path: string) => path === '/orders' ? order('pending') : order());
+    mocks.provider.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path !== '/orders') return order();
+      const body: unknown = JSON.parse(String(options?.body));
+      // Contrato mínimo documentado para Pix: nome, e-mail, documento e telefone.
+      if (!isRow(body) || !isRow(body.customer) || !body.customer.name || !body.customer.email || !body.customer.document || !body.customer.phones) {
+        throw new Error('Synthetic provider: missing required Pix customer fields');
+      }
+      return order('pending');
+    });
   });
   afterEach(() => {
     expect(network).not.toHaveBeenCalled();
@@ -136,6 +144,7 @@ describe('PIX and paid webhook monotonic persistence', () => {
     expect(await response.json()).toMatchObject({ amount: 100, orderId: 'or_synthetic', qrCode: 'synthetic-qr' });
     const [, options] = mocks.provider.mock.calls[0];
     expect(JSON.parse(options.body).items[0].amount).toBe(10000);
+    expect(JSON.parse(options.body).customer.email).toBe('guest@example.invalid');
     expect(options.headers['Idempotency-Key']).toBe(`reservation-${reservationId}-fee`);
     expect(payments).toHaveLength(1);
     expect(payments[0]).toMatchObject({ status: 'pending', paid_at: null });
@@ -154,6 +163,66 @@ describe('PIX and paid webhook monotonic persistence', () => {
   it('rejects wrong token before provider IO or writes', async () => {
     expect((await pix(pixRequest('b'.repeat(64)))).status).toBe(404);
     expect(mocks.provider).not.toHaveBeenCalled(); expect(payments).toHaveLength(0);
+  });
+
+  it.each([null, '', 'invalid', `${'x'.repeat(49)}@example.invalid`])('requires a valid email before creating a provider order: %s', async (email) => {
+    reservation.email = email;
+    const response = await pix(pixRequest());
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'PAYMENT_EMAIL_REQUIRED' });
+    expect(mocks.provider).not.toHaveBeenCalled();
+    expect(operations.every((operation) => operation.method === 'GET')).toBe(true);
+  });
+
+  it('accepts supplied email for an authorized pending reservation without one and preserves the idempotency key', async () => {
+    reservation.email = null;
+    expect((await pix(pixRequest(accessToken, ' Guest@Example.Invalid '))).status).toBe(200);
+    const [, options] = mocks.provider.mock.calls[0];
+    expect(JSON.parse(options.body).customer.email).toBe('guest@example.invalid');
+    expect(options.headers['Idempotency-Key']).toBe(`reservation-${reservationId}-fee`);
+    expect(reservation.email).toBe('guest@example.invalid');
+    expect(operations.filter((operation) => operation.method === 'PATCH' && operation.table === 'reservations')[0].url.searchParams.get('payment_status')).toBe('eq.pending');
+  });
+
+  it('does not persist supplied email or query provider with the wrong token', async () => {
+    reservation.email = null;
+    expect((await pix(pixRequest('b'.repeat(64), 'guest@example.invalid'))).status).toBe(404);
+    expect(reservation.email).toBeNull();
+    expect(mocks.provider).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid supplied email rather than truncating or substituting it', async () => {
+    expect((await pix(pixRequest(accessToken, `${'x'.repeat(49)}@example.invalid`))).status).toBe(400);
+    expect(mocks.provider).not.toHaveBeenCalled();
+    expect(reservation.email).toBe('guest@example.invalid');
+  });
+
+  it.each([
+    ['failed', 'failed', 'failed', '400', 400],
+    ['sensitive-order-status', 'sensitive-charge-status', 'sensitive-transaction-status', 'sensitive-code', null],
+  ])('reports missing QR using only allowlisted provider diagnostics (%s)', async (orderStatus, chargeStatus, transactionStatus, gatewayCode, expectedCode) => {
+    mocks.provider.mockResolvedValue({ ...order(), status: orderStatus, charges: [{ status: chargeStatus, last_transaction: {
+      status: transactionStatus, gateway_response: { code: gatewayCode, errors: [{ message: 'SENSITIVE_GATEWAY_MESSAGE' }] },
+    } }] });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await pix(pixRequest());
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: 'O Pagar.me não retornou os dados do QR Code PIX.' });
+      expect(log).toHaveBeenCalledWith('PIX Pagar.me sem QR Code:', {
+        orderStatus: orderStatus === 'failed' ? 'failed' : 'unknown',
+        chargeStatus: chargeStatus === 'failed' ? 'failed' : 'unknown',
+        transactionStatus: transactionStatus === 'failed' ? 'failed' : 'unknown',
+        gatewayHttpCode: expectedCode, hasGatewayErrors: true,
+      });
+      const logged = JSON.stringify(log.mock.calls);
+      expect(logged).not.toContain('SENSITIVE_GATEWAY_MESSAGE');
+      expect(logged).not.toContain('sensitive-');
+      expect(logged).not.toContain('guest@example.invalid');
+      expect(logged).not.toContain(accessToken);
+      expect(payments).toHaveLength(0);
+      expect(mocks.provider).toHaveBeenCalledTimes(1);
+    } finally { log.mockRestore(); }
   });
 
   it.each([

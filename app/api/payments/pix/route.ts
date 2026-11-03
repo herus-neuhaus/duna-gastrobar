@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { isValidCpf, pagarmeRequest } from '@/lib/pagarme';
 import { hashReservationAccessToken, isReservationAccessToken } from '@/lib/reservation-access';
 import { persistReservationPayment } from '@/lib/reservation-payment-persistence';
+import { isValidReservationPaymentEmail } from '@/lib/reservation-payment';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +13,10 @@ type PagarmeOrder = {
   amount: number;
   charges?: Array<{
     id: string;
+    status?: string;
     last_transaction?: {
+      status?: string;
+      gateway_response?: { code?: string | number; errors?: unknown[] };
       qr_code?: string;
       qr_code_url?: string;
       expires_at?: string;
@@ -26,6 +30,7 @@ export async function POST(request: Request) {
     const reservationId = typeof body.reservationId === 'string' ? body.reservationId : '';
     const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
     const accessToken = typeof body.accessToken === 'string' ? body.accessToken : '';
+    const suppliedEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
 
     if (!reservationId || !isValidCpf(cpf) || !isReservationAccessToken(accessToken)) {
       return NextResponse.json({ error: 'Reserva ou CPF inválido.' }, { status: 400 });
@@ -54,6 +59,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Esta reserva não possui pagamento pendente.' }, { status: 400 });
     }
 
+    const email = suppliedEmail || (reservation.email || '').trim().toLowerCase();
+    if (!isValidReservationPaymentEmail(email)) {
+      return NextResponse.json({ error: 'Informe um e-mail válido, com até 64 caracteres, para gerar o PIX.', code: 'PAYMENT_EMAIL_REQUIRED' }, { status: 400 });
+    }
+
     const phone = reservation.whatsapp.replace(/\D/g, '');
     const localPhone = phone.startsWith('55') && phone.length >= 12 ? phone.slice(2) : phone;
     const areaCode = localPhone.slice(0, 2);
@@ -77,7 +87,7 @@ export async function POST(request: Request) {
         }],
         customer: {
           name: reservation.name.slice(0, 64),
-          ...(reservation.email ? { email: reservation.email.slice(0, 64) } : {}),
+          email,
           type: 'individual',
           document: cpf,
           document_type: 'CPF',
@@ -122,6 +132,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Esta reserva já está paga.' }, { status: 409 });
     }
     if (!transaction?.qr_code) {
+      // Somente estados conhecidos/código HTTP. Nunca registrar a ordem inteira,
+      // mensagens livres do gateway, QR Code, contato, CPF ou credenciais.
+      const knownStatus = (status?: string) => ['pending', 'paid', 'failed', 'canceled', 'cancelled', 'waiting_payment', 'with_error', 'processing'].includes(status || '') ? status : 'unknown';
+      const gatewayCode = Number(transaction?.gateway_response?.code);
+      console.error('PIX Pagar.me sem QR Code:', {
+        orderStatus: knownStatus(order.status),
+        chargeStatus: knownStatus(order.charges?.[0]?.status),
+        transactionStatus: knownStatus(transaction?.status),
+        gatewayHttpCode: Number.isInteger(gatewayCode) && gatewayCode >= 100 && gatewayCode <= 599 ? gatewayCode : null,
+        hasGatewayErrors: Boolean(transaction?.gateway_response?.errors?.length),
+      });
       throw new Error('O Pagar.me não retornou os dados do QR Code PIX.');
     }
 
@@ -137,6 +158,7 @@ export async function POST(request: Request) {
       .from('reservations')
       .update({
         cpf,
+        email,
         expires_at: transaction.expires_at || null,
       })
       .eq('id', reservation.id)

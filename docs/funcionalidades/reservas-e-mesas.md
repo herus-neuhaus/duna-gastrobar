@@ -23,10 +23,19 @@ Credencial do cliente: `lib/reservation-access.ts` gera token aleatório de 32 b
   três meses. Há navegação por teclado, virada de mês e consulta dos motivos de
   datas indisponíveis também por toque. `ReservationProgress` acrescenta
   **Pagamento** somente quando necessário e mantém a etapa na tela do PIX.
-- Não há coleta de e-mail no novo formulário público. CPF é solicitado e enviado
+- **Ajuste aprovado em 03/11/2026:** e-mail e CPF são solicitados e enviados
   somente com pagamento: 15+ pessoas ou data especial com taxa, mesmo abaixo de 15.
+  O e-mail voltou ao fluxo pago por exigência documentada do PIX Pagar.me; reserva
+  gratuita continua somente com nome e telefone. Endereço inválido ou acima de 64
+  caracteres é rejeitado, nunca truncado. A API aplica a mesma exigência antes de
+  criar uma reserva paga; no painel, o campo existente indica obrigatoriedade
+  quando há cobrança, sem redesenhar o restante do formulário.
   `lib/reservation-payment.ts` mantém o valor de grupo e a precedência do valor de
   evento; a API calcula a regra novamente, incluindo quantidade fixa do pacote.
+- O PIX exige token válido antes de aceitar contato. Usa o e-mail salvo ou o
+  informado na geração autorizada, normaliza e valida antes de chamar o provedor.
+  CPF/e-mail/expiração só são atualizados enquanto o pagamento da reserva ainda
+  está pendente, preservando a proteção contra disputa com o webhook.
 - A API aceita ausência de CPF em reserva gratuita; CPF presente continua sujeito
   à validação. Só pesquisa duplicidade por CPF quando ele foi informado. A guarda
   concorrente de duplicidade por WhatsApp, agenda e capacidade permanece no banco.
@@ -49,11 +58,18 @@ Duna como versão remota `20261103194610`, após aprovação específica. Trigge
 ACLs foram conferidos antes/depois. Deploy da aplicação continua separado; ver
 [registro de implantação](../implantacao-reservas-2026-11-03.md).
 
-**Limites:** formulário administrativo mantém seus campos atuais; aumento de uma
+**Limites:** formulário administrativo mantém seus campos atuais, com indicação
+de e-mail obrigatório para pagamento; aumento de uma
 reserva existente de 14 para 15 continua com a lacuna financeira documentada.
 Recuperação em outro dispositivo sem e-mail continua assistida pela equipe;
 não há autenticação nova por telefone. Conversão em consumação continua sendo a
 regra comunicada, não um novo mecanismo de crédito contábil.
+
+O retorno do e-mail foi implementado apenas localmente, sem migration, backfill,
+reparação de reservas/ordens existentes ou deploy. Se uma tentativa já falhou no
+provedor, não trocar a chave de idempotência nem criar outra cobrança às cegas;
+conferir o pedido existente antes de aprovar recuperação. A coleta do contato não
+reintroduz a interface de recuperação por e-mail em “Minhas reservas”.
 
 A aba “Minhas reservas” não exibe mais recuperação por e-mail/código. O telefone
 filtra o acesso salvo neste navegador; falhas e ausência de resultado orientam

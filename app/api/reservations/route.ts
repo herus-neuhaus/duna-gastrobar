@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { isPanelStaff } from '@/lib/auth';
 import { isValidCpf } from '@/lib/cpf';
-import { getReservationPayment } from '@/lib/reservation-payment';
+import { getReservationPayment, isValidReservationPaymentEmail } from '@/lib/reservation-payment';
 import { getPublicReservationDateRange, RESERVATION_MIN_LEAD_HOURS } from '@/lib/public-reservation-form';
 import { createReservationAccessToken, hashReservationAccessToken } from '@/lib/reservation-access';
 
@@ -127,6 +127,9 @@ export async function POST(request: Request) {
     const { required: requiresPayment, amount: paymentAmount } = getReservationPayment(guests, specialDate);
     if (requiresPayment && !isValidCpf(cpf)) {
       return NextResponse.json({ error: 'Informe um CPF válido para gerar o pagamento.', code: 'PAYMENT_CPF_REQUIRED' }, { status: 400 });
+    }
+    if (requiresPayment && !isValidReservationPaymentEmail(email)) {
+      return NextResponse.json({ error: 'Informe um e-mail válido, com até 64 caracteres, para gerar o PIX.', code: 'PAYMENT_EMAIL_REQUIRED' }, { status: 400 });
     }
     if (requiresPayment && (!Number.isFinite(paymentAmount) || paymentAmount <= 0)) {
       return NextResponse.json({ error: 'Valor de pagamento inválido.' }, { status: 400 });

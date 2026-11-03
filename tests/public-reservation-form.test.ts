@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getReservationPayment } from '@/lib/reservation-payment';
+import { getReservationPayment, isValidReservationPaymentEmail } from '@/lib/reservation-payment';
 import { getPublicReservationDateRange, getPublicReservationDates, hasReservationLeadTime, validatePublicReservationContact } from '@/lib/public-reservation-form';
 
-const contact = { name: 'Cliente sintético', whatsapp: '(69) 91234-5678', cpf: '' };
+const contact = { name: 'Cliente sintético', whatsapp: '(69) 91234-5678', cpf: '', email: '' };
 
 describe('regras do formulário público', () => {
   it.each([1, 14])('não pede CPF para %i pessoas sem pagamento', (guests) => {
@@ -30,7 +30,20 @@ describe('regras do formulário público', () => {
   it('valida contato e CPF somente no fluxo correspondente', () => {
     expect(validatePublicReservationContact({ ...contact, name: ' ', whatsapp: '12' }, false)).toHaveProperty('name');
     expect(validatePublicReservationContact({ ...contact, whatsapp: '12' }, false)).toHaveProperty('whatsapp');
-    expect(validatePublicReservationContact({ ...contact, cpf: '52998224725' }, true)).toEqual({});
+    expect(validatePublicReservationContact({ ...contact, cpf: '52998224725', email: 'guest@example.invalid' }, true)).toEqual({});
+  });
+
+  it.each(['', 'invalid', 'guest @example.invalid', `${'x'.repeat(49)}@example.invalid`])('exige e-mail válido de até 64 caracteres somente com pagamento: %s', (email) => {
+    expect(validatePublicReservationContact({ ...contact, cpf: '52998224725', email }, true)).toHaveProperty('email');
+    expect(validatePublicReservationContact({ ...contact, email }, false)).not.toHaveProperty('email');
+  });
+
+  it('aceita e-mail com espaços externos e não trunca o endereço no limite do provedor', () => {
+    const email = `${'x'.repeat(48)}@example.invalid`;
+    expect(email).toHaveLength(64);
+    expect(isValidReservationPaymentEmail(email)).toBe(true);
+    expect(isValidReservationPaymentEmail(`x${email}`)).toBe(false);
+    expect(validatePublicReservationContact({ ...contact, cpf: '52998224725', email: ` ${email} ` }, true)).toEqual({});
   });
 
   it('oferece hoje e mais sessenta datas em Porto Velho, mesmo após meia-noite UTC', () => {

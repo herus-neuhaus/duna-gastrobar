@@ -7,7 +7,7 @@ function props(): ComponentProps<typeof PublicReservationForm> {
   return {
     step: 'reservation', onStepChange: vi.fn(),
     selection: { date: '2026-10-30', time: '19:00', guests: 2, specialDate: null, notes: '', decorationId: '' },
-    onSelectionChange: vi.fn(), contact: { name: '', whatsapp: '', cpf: '' }, onContactChange: vi.fn(),
+    onSelectionChange: vi.fn(), contact: { name: '', whatsapp: '', cpf: '', email: '' }, onContactChange: vi.fn(),
     availability: {
       dates: ['2026-10-30'], availableTimes: { '2026-10-30': ['19:00'] },
       timeTurns: { '2026-10-30': { '19:00': 'dinner' } }, turnTotals: { '2026-10-30|dinner': 0 },
@@ -30,6 +30,7 @@ describe('estrutura renderizada das etapas (sem navegador)', () => {
     expect(html).toContain('Continuar');
     expect(html).not.toContain('id="booking-name"');
     expect(html).not.toContain('id="booking-cpf"');
+    expect(html).not.toContain('id="booking-email"');
     expect(html).toContain('Hoje e os próximos 60 dias');
     expect(html).toContain('Antecedência mínima de 2 horas');
   });
@@ -65,21 +66,34 @@ describe('estrutura renderizada das etapas (sem navegador)', () => {
     expect(html).not.toContain('id="booking-date"');
   });
 
-  it.each([15, 30])('expõe CPF e PIX para %i pessoas', (guests) => {
+  it.each([15, 30])('expõe e-mail, CPF e PIX para %i pessoas', (guests) => {
     const data = props();
     data.step = 'details';
     data.selection.guests = guests;
     const html = renderToStaticMarkup(createElement(PublicReservationForm, data));
     expect(html).toContain('id="booking-cpf"');
+    expect(html).toContain('for="booking-email"');
+    expect(html).toMatch(/<input[^>]*id="booking-email"[^>]*type="email"[^>]*autoComplete="email"[^>]*required=""[^>]*maxLength="64"/);
+    expect(html).toContain('Exigido pelo provedor de pagamento para gerar o PIX.');
     expect(html).toContain('Solicitar e gerar PIX');
   });
 
-  it('expõe CPF para evento pago com duas pessoas', () => {
+  it('expõe e-mail e CPF para evento pago com duas pessoas', () => {
     const data = props();
     data.step = 'details';
     data.selection.specialDate = { id: 'event', date: data.selection.date, description: 'Evento sintético', included_guests: 2, requires_fee: true, fee_amount: 75 };
     data.availability.specialDates = [data.selection.specialDate];
-    expect(renderToStaticMarkup(createElement(PublicReservationForm, data))).toContain('id="booking-cpf"');
+    const html = renderToStaticMarkup(createElement(PublicReservationForm, data));
+    expect(html).toContain('id="booking-cpf"');
+    expect(html).toContain('id="booking-email"');
+  });
+
+  it('não coleta e-mail para evento gratuito abaixo de 15 pessoas', () => {
+    const data = props();
+    data.step = 'details';
+    data.selection.specialDate = { id: 'event', date: data.selection.date, description: 'Evento gratuito', included_guests: 2, requires_fee: false, fee_amount: null };
+    data.availability.specialDates = [data.selection.specialDate];
+    expect(renderToStaticMarkup(createElement(PublicReservationForm, data))).not.toContain('id="booking-email"');
   });
 
   it('diferencia erro de consulta de ausência de horários', () => {

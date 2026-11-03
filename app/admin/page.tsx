@@ -59,6 +59,7 @@ import { Select, Textarea } from '@/components/ui/form-controls';
 import { Card } from '@/components/ui/card';
 import { Feedback } from '@/components/ui/feedback';
 import { MetricCard } from '@/components/ui/metric-card';
+import { getReservationPayment, isValidReservationPaymentEmail, RESERVATION_PAYMENT_EMAIL_MAX_LENGTH } from '@/lib/reservation-payment';
 
 type Reservation = Database['public']['Tables']['reservations']['Row'];
 type ReservationStatus = 'confirmed' | 'cancelled' | 'seated' | 'completed' | 'no_show';
@@ -657,6 +658,8 @@ function NewReservationView() {
   const [erroHorarios, setErroHorarios] = useState('');
 
   const guests = Number(form.guests);
+  const selectedSpecialDate = specialDates.find((item) => item.id === form.specialDateId) || (specialDates.length === 1 ? specialDates[0] : null);
+  const payment = getReservationPayment(selectedSpecialDate?.included_guests || guests, selectedSpecialDate);
   useEffect(() => {
     const controller = new AbortController();
     const carregarHorarios = async () => {
@@ -723,6 +726,10 @@ function NewReservationView() {
 
   const createReservation = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (payment.required && !isValidReservationPaymentEmail(form.email.trim())) {
+      setMessage('Informe um e-mail válido, com até 64 caracteres, para gerar o PIX.');
+      return;
+    }
     if (!form.scheduleOverrideReason && (carregandoHorarios || !horariosDisponiveis.includes(form.time))) {
       setMessage('Selecione um horário disponível na agenda.');
       return;
@@ -789,8 +796,8 @@ function NewReservationView() {
           </Select>
         </label>}
         <label>
-          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">E-mail (opcional)</span>
-          <Input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="cliente@email.com" />
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">{payment.required ? 'E-mail para pagamento' : 'E-mail (opcional)'}</span>
+          <Input type="email" required={payment.required} maxLength={payment.required ? RESERVATION_PAYMENT_EMAIL_MAX_LENGTH : undefined} value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="cliente@email.com" />
         </label>
         <label>
           <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[#4A3728]/60">Data</span>
