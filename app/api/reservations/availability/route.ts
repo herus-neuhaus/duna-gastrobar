@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getPublicReservationDateRange } from '@/lib/public-reservation-form';
 const CAPACITY_LIMIT = 80;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function getToday() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Porto_Velho' }).format(new Date());
-}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,10 +13,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Período inválido.' }, { status: 400 });
   }
 
-  const today = getToday();
-  const lastPublicDate = new Date(`${today}T00:00:00Z`);
-  lastPublicDate.setUTCDate(lastPublicDate.getUTCDate() + 10);
-  const lastPublicDateString = lastPublicDate.toISOString().slice(0, 10);
+  const { today, lastDate: lastPublicDateString } = getPublicReservationDateRange();
   if (to < today) {
     return NextResponse.json({ turnTotals: {}, timeTurns: {}, fullDates: [], specialDates: [], blockedDates: [], availableTimes: {} }, {
       headers: { 'Cache-Control': 'no-store' },

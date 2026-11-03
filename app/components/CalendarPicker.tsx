@@ -1,131 +1,134 @@
 'use client';
 
-import React, { useState } from 'react';
-import { 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  isSameMonth, 
-  isSameDay, 
-  addDays, 
-  isBefore, 
-  startOfToday,
-  isAfter,
-  addDays as addDaysFns
-} from 'date-fns';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { addDays, addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, parse, startOfMonth, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { getPublicReservationDates } from '@/lib/public-reservation-form';
 
 interface CalendarPickerProps {
   selectedDate: string;
   onDateSelect: (date: string) => void;
-  disabledDates?: string[];
+  availableDates: string[];
+  disabledDateReasons?: Record<string, string>;
+  disabled?: boolean;
 }
 
-export default function CalendarPicker({ selectedDate, onDateSelect, disabledDates = [] }: CalendarPickerProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const today = startOfToday();
-  const maxDate = addMonths(today, 3); // Permitir agendar até 3 meses no futuro
+export default function CalendarPicker({
+  selectedDate, onDateSelect, availableDates, disabledDateReasons = {}, disabled = false,
+}: CalendarPickerProps) {
+  const monthId = useId();
+  const helpId = useId();
+  const today = getPublicReservationDates()[0];
+  const months = [...new Set(availableDates.map((date) => date.slice(0, 7)))].sort();
+  const firstMonth = months[0] || today.slice(0, 7);
+  const [currentMonth, setCurrentMonth] = useState(() => (
+    availableDates.includes(selectedDate) ? selectedDate.slice(0, 7) : firstMonth
+  ));
+  const [focusedDate, setFocusedDate] = useState(selectedDate);
+  const requestedFocus = useRef<string | null>(null);
+  const dayButtons = useRef(new Map<string, HTMLButtonElement>());
+  const displayedMonth = months.includes(currentMonth) ? currentMonth : firstMonth;
+  const monthIndex = months.indexOf(displayedMonth);
+  const month = parse(`${displayedMonth}-01`, 'yyyy-MM-dd', new Date());
+  const enabledDates = availableDates.filter((date) => !disabledDateReasons[date]).sort();
+  const visibleEnabledDates = enabledDates.filter((date) => date.startsWith(displayedMonth));
+  const tabStop = visibleEnabledDates.includes(focusedDate) ? focusedDate
+    : visibleEnabledDates.includes(selectedDate) ? selectedDate : visibleEnabledDates[0];
+  const days = eachDayOfInterval({
+    start: startOfWeek(startOfMonth(month), { weekStartsOn: 0 }),
+    end: endOfWeek(endOfMonth(month), { weekStartsOn: 0 }),
+  });
 
-  const renderHeader = () => {
-    return (
-      <div className="flex items-center justify-between px-2 mb-4">
-        <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          disabled={isSameMonth(currentMonth, today)}
-          className="p-2 hover:bg-[#F5F2ED] rounded-full transition-colors disabled:opacity-20"
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <h2 className="text-sm font-bold uppercase tracking-widest text-[#4A3728]">
-          {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
-        </h2>
-        <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          disabled={isSameMonth(currentMonth, maxDate)}
-          className="p-2 hover:bg-[#F5F2ED] rounded-full transition-colors disabled:opacity-20"
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
-    );
-  };
-
-  const renderDays = () => {
-    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    return (
-      <div className="grid grid-cols-7 mb-2">
-        {days.map((day) => (
-          <div key={day} className="text-center text-[10px] font-bold uppercase text-[#4A3728]/40 py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderCells = () => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(monthStart);
-    const startDate = startOfWeek(monthStart);
-    const endDate = endOfWeek(monthEnd);
-
-    const rows = [];
-    let days = [];
-    let day = startDate;
-    let formattedDate = "";
-
-    while (day <= endDate) {
-      for (let i = 0; i < 7; i++) {
-        formattedDate = format(day, 'yyyy-MM-dd');
-        const cloneDay = day;
-        const isFull = disabledDates.includes(formattedDate);
-        const isDisabled = isBefore(day, today) || isAfter(day, maxDate) || isFull;
-        const isSelected = selectedDate === formattedDate;
-        const isCurrentMonth = isSameMonth(day, monthStart);
-
-        days.push(
-          <button
-            key={formattedDate}
-            disabled={isDisabled}
-            onClick={() => onDateSelect(format(cloneDay, 'yyyy-MM-dd'))}
-            className={`
-              relative h-10 flex items-center justify-center text-xs font-medium rounded-xl transition-all
-              ${isDisabled ? 'text-[#4A3728]/10 cursor-not-allowed' : 'hover:bg-[#F5F2ED] text-[#4A3728]'}
-              ${isSelected ? 'bg-[#4A3728] text-white hover:bg-[#4A3728]' : ''}
-              ${!isCurrentMonth && !isSelected ? 'text-[#4A3728]/30' : ''}
-            `}
-          >
-            <span>{format(day, 'd')}</span>
-            {isFull && !isSelected && isCurrentMonth && (
-              <span className="absolute top-1 right-1 text-[7px] font-bold text-red-500 uppercase">Lotado</span>
-            )}
-            {isSameDay(day, today) && !isSelected && (
-              <div className="absolute bottom-1.5 w-1 h-1 bg-[#4A3728] rounded-full"></div>
-            )}
-          </button>
-        );
-        day = addDays(day, 1);
-      }
-      rows.push(
-        <div className="grid grid-cols-7 gap-1" key={day.toString()}>
-          {days}
-        </div>
-      );
-      days = [];
+  useEffect(() => {
+    if (requestedFocus.current) {
+      dayButtons.current.get(requestedFocus.current)?.focus();
+      requestedFocus.current = null;
     }
-    return <div className="space-y-1">{rows}</div>;
+  }, [focusedDate, displayedMonth]);
+
+  const handleDayKeyDown = (event: KeyboardEvent<HTMLButtonElement>, date: string) => {
+    const day = parse(date, 'yyyy-MM-dd', new Date());
+    let next: Date;
+    let forward: boolean;
+    switch (event.key) {
+      case 'ArrowLeft': next = addDays(day, -1); forward = false; break;
+      case 'ArrowRight': next = addDays(day, 1); forward = true; break;
+      case 'ArrowUp': next = addDays(day, -7); forward = false; break;
+      case 'ArrowDown': next = addDays(day, 7); forward = true; break;
+      case 'Home': next = startOfWeek(day, { weekStartsOn: 0 }); forward = true; break;
+      case 'End': next = endOfWeek(day, { weekStartsOn: 0 }); forward = false; break;
+      case 'PageUp': next = addMonths(day, -1); forward = false; break;
+      case 'PageDown': next = addMonths(day, 1); forward = true; break;
+      default: return;
+    }
+    event.preventDefault();
+    const nextValue = format(next, 'yyyy-MM-dd');
+    const target = forward ? enabledDates.find((value) => value >= nextValue)
+      : [...enabledDates].reverse().find((value) => value <= nextValue);
+    if (!target) return;
+    requestedFocus.current = target;
+    setCurrentMonth(target.slice(0, 7));
+    setFocusedDate(target);
   };
 
   return (
-    <div className="p-2 animate-in fade-in slide-in-from-top-2 duration-300">
-      {renderHeader()}
-      {renderDays()}
-      {renderCells()}
-    </div>
+    <section id="booking-date" aria-label="Calendário de reservas" aria-describedby={helpId} aria-busy={disabled}
+      className="rounded-2xl border border-[#d9cfc1] bg-white p-3 sm:p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <Button type="button" variant="ghost" size="icon" aria-label="Mês anterior"
+          disabled={disabled || monthIndex <= 0} onClick={() => setCurrentMonth(months[monthIndex - 1])}>
+          <ChevronLeft size={20} />
+        </Button>
+        <h3 id={monthId} aria-live="polite" className="text-center text-sm font-semibold capitalize sm:text-base">
+          {format(month, "MMMM 'de' yyyy", { locale: ptBR })}
+        </h3>
+        <Button type="button" variant="ghost" size="icon" aria-label="Próximo mês"
+          disabled={disabled || monthIndex < 0 || monthIndex >= months.length - 1} onClick={() => setCurrentMonth(months[monthIndex + 1])}>
+          <ChevronRight size={20} />
+        </Button>
+      </div>
+      <div className="mb-2 grid grid-cols-7 text-center text-xs font-semibold text-[#76695e]" aria-hidden="true">
+        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => <span key={day} className="py-2">{day}</span>)}
+      </div>
+      <div role="group" aria-labelledby={monthId} className="grid grid-cols-7 gap-y-1">
+        {days.map((day) => {
+          const value = format(day, 'yyyy-MM-dd');
+          if (!value.startsWith(displayedMonth)) return <span key={value} aria-hidden="true" />;
+          const reason = !availableDates.includes(value) ? 'Fora do período de reservas online' : disabledDateReasons[value];
+          const isDisabled = disabled || Boolean(reason);
+          const selected = value === selectedDate;
+          const label = format(day, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+          return (
+            <button key={value} type="button" data-date={value} disabled={isDisabled}
+              ref={(button) => { if (button) dayButtons.current.set(value, button); else dayButtons.current.delete(value); }}
+              aria-label={`${label}${reason ? ` — ${reason}` : ''}`} aria-pressed={selected}
+              aria-current={value === today ? 'date' : undefined} title={reason || label}
+              tabIndex={value === tabStop ? 0 : -1} onFocus={() => setFocusedDate(value)}
+              onKeyDown={(event) => handleDayKeyDown(event, value)}
+              onClick={() => { setFocusedDate(value); onDateSelect(value); }}
+              className={`relative flex aspect-square w-full max-w-11 min-w-0 items-center justify-center justify-self-center rounded-full text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8a684d] ${
+                isDisabled ? 'cursor-not-allowed text-[#b4aaa0]'
+                  : selected ? 'bg-[#4a3728] text-white' : 'text-[#4a3728] hover:bg-[#f5f2ed]'
+              }`}>
+              {format(day, 'd')}
+              {value === today && !selected && <span aria-hidden="true" className="absolute bottom-1 h-1 w-1 rounded-full bg-current" />}
+            </button>
+          );
+        })}
+      </div>
+      {!disabled && Object.keys(disabledDateReasons).some((date) => date.startsWith(displayedMonth)) && (
+        <details className="mt-3 border-t border-[#d9cfc1] pt-2 text-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Ver datas indisponíveis</summary>
+          <ul className="space-y-2 pb-2 text-[#76695e]">
+            {availableDates.filter((date) => date.startsWith(displayedMonth) && disabledDateReasons[date]).map((date) => (
+              <li key={date}>{format(parse(date, 'yyyy-MM-dd', new Date()), 'dd/MM')} — {disabledDateReasons[date]}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <p id={helpId} className="sr-only">Use as setas para navegar pelos dias disponíveis e Enter para selecionar. Dias indisponíveis e fora do período não podem ser selecionados.</p>
+    </section>
   );
 }

@@ -54,10 +54,16 @@ Confirme versões atuais no lockfile antes de usar APIs de outra versão.
   Não suponha multi-tenant implementado: confirme isolamento antes de expandi-lo.
 - Alterações remotas, deploy, cobranças e reparação de dados exigem tarefa e
   autorização específicas. Os agentes Duna não recebem escrita remota por padrão.
-- `duna-database` é o executor de banco selecionado diretamente pelo usuário:
-  metadados permitidos, SQL e migrations via MCP sob aprovação por operação.
-  Os demais agentes continuam sem execução Supabase. Selecionar/criar o perfil
-  não autoriza automaticamente aplicar alterações pendentes nem contornar negativas.
+- Somente o agente nativo `build` recebe Code Mode e ferramentas enumeradas de
+  `supabase_duna`, projeto `gnakcuvfxltbgpssirpv` (trate como produção).
+  Metadados mínimos enumerados são permitidos; SQL (inclusive SELECT), migrations,
+  logs, tipos e operações Storage/Edge Functions exigem aprovação por operação.
+  A conexão antiga `supabase` permanece bloqueada neste projeto; `plan`,
+  `general` e `explore` não recebem MCP/Code Mode. Selecionar `build` não autoriza
+  operações remotas ou alterações pendentes. Configuração nominal não comprova
+  disponibilidade ou operação no servidor existente. Ferramentas não enumeradas
+  permanecem bloqueadas; não reconfigure o servidor para suprir ferramenta ausente.
+  Chaves/secrets e administração de projetos/organizações/branches permanecem negadas.
 - Não altere a configuração global do MCP nem reinstale as skills Supabase.
   Exemplos externos não autorizam DDL remoto. Nunca aplique bootstrap local em
   banco existente ou envie toda a pasta histórica sem reconciliação aprovada.
@@ -65,9 +71,14 @@ Confirme versões atuais no lockfile antes de usar APIs de outra versão.
 
 ## Fluxo e verificação
 
-Para mudanças relevantes: Produto → UI/UX (se houver interface) → Engenharia →
-Qualidade independente. Simplifique correções pequenas. O orquestrador delega
-somente quando útil; cada especialista carrega suas skills pertinentes sob demanda.
+Use os agentes nativos do OpenCode: `plan` para análise/planejamento e `build`
+(padrão) para implementação aprovada. Não há perfis personalizados nem fluxo
+obrigatório entre especialistas. Edição/comandos continuam sob aprovação e
+delegação permanece desabilitada. Carregue apenas as skills pertinentes.
+Para mudanças relevantes, esclareça produto e critérios, planeje a experiência
+quando houver UI, implemente o aprovado e peça revisão independente em outra
+sessão ou por outra pessoa.
+Simplifique correções pequenas; autoinspeção não é revisão independente.
 Uso, permissões e validação da arquitetura: `.opencode/README.md`.
 
 Conforme o escopo: `npm run typecheck`, `npm run lint`, `npm test` e revisão de

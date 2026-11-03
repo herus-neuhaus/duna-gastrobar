@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { pagarmeRequest } from '@/lib/pagarme';
+import { persistReservationPayment } from '@/lib/reservation-payment-persistence';
 
 export const runtime = 'nodejs';
 
@@ -46,30 +47,31 @@ export async function POST(request: Request) {
       .single();
 
     const paymentAmount = Number(reservation?.payment_amount || 0);
-    if (reservationError || !reservation || reservation.payment_status !== 'pending' || paymentAmount <= 0 || order.amount !== Math.round(paymentAmount * 100)) {
+    if (reservationError || !reservation || !['pending', 'paid'].includes(reservation.payment_status || '') || paymentAmount <= 0 || order.amount !== Math.round(paymentAmount * 100)) {
       return NextResponse.json({ error: 'Pagamento não confirmado.' }, { status: 400 });
     }
 
-    const { error: paymentError } = await supabase
-      .from('reservation_payments')
-      .upsert({
-        reservation_id: reservationId,
-        provider: 'pagarme',
-        provider_order_id: order.id,
-        method: 'pix',
-        status: 'paid',
-        amount: paymentAmount,
-        paid_at: new Date().toISOString(),
-      }, { onConflict: 'provider,provider_order_id' });
-    if (paymentError) throw paymentError;
+    if (reservation.payment_status === 'paid') {
+      // Só reconhecer reentrega da mesma ordem já vinculada à reserva; uma ordem
+      // diferente não vira automaticamente outro pagamento de uma reserva paga.
+      const { data: payment, error: paymentError } = await supabase.from('reservation_payments')
+        .select('amount')
+        .eq('provider', 'pagarme')
+        .eq('provider_order_id', order.id)
+        .eq('reservation_id', reservationId)
+        .maybeSingle();
+      if (paymentError) throw paymentError;
+      if (!payment || Number(payment.amount) !== paymentAmount) {
+        return NextResponse.json({ error: 'Pagamento não confirmado.' }, { status: 400 });
+      }
+    }
 
-    const { data, error } = await supabase.rpc('complete_reservation_payment', {
-      p_reservation_id: reservationId,
-      p_payment_amount: paymentAmount,
+    await persistReservationPayment(supabase, {
+      reservationId,
+      orderId: order.id,
+      amount: paymentAmount,
+      status: 'paid',
     });
-
-    if (error) throw error;
-    if (!data?.[0]) return NextResponse.json({ received: true });
 
     return NextResponse.json({ received: true });
   } catch (error) {

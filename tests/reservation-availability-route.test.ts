@@ -42,12 +42,33 @@ describe('GET /api/reservations/availability', () => {
     });
   });
 
-  it('clips public availability to today through today plus ten days', async () => {
+  it('clips public availability to today through today plus sixty days', async () => {
     const rpc = vi.fn(async () => ({ data: [], error: null }));
     mocks.createAdminClient.mockReturnValue({ from: () => dateQuery([]), rpc });
     const response = await GET(new Request('http://localhost/api/reservations/availability?from=2026-09-01&to=2026-12-31'));
     expect(response.status).toBe(200);
-    expect(rpc).toHaveBeenCalledWith('get_reservation_capacity_availability', { p_from: '2026-09-09', p_to: '2026-09-19' });
+    expect(rpc).toHaveBeenCalledWith('get_reservation_capacity_availability', { p_from: '2026-09-09', p_to: '2026-11-08' });
+  });
+
+  it('queries day +60 inclusively and does not query beyond day +60', async () => {
+    const rpc = vi.fn(async () => ({ data: [], error: null }));
+    mocks.createAdminClient.mockReturnValue({ from: () => dateQuery([]), rpc });
+    const lastDay = await GET(new Request('http://localhost/api/reservations/availability?from=2026-11-08'));
+    expect(lastDay.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith('get_reservation_capacity_availability', { p_from: '2026-11-08', p_to: '2026-11-08' });
+    mocks.createAdminClient.mockClear();
+    const outside = await GET(new Request('http://localhost/api/reservations/availability?from=2026-11-09'));
+    expect(outside.status).toBe(200);
+    expect(await outside.json()).toMatchObject({ availableTimes: {}, specialDates: [], blockedDates: [] });
+    expect(mocks.createAdminClient).not.toHaveBeenCalled();
+  });
+
+  it('uses the business date after UTC midnight and clips across the year', async () => {
+    vi.setSystemTime(new Date('2027-01-01T02:00:00Z'));
+    const rpc = vi.fn(async () => ({ data: [], error: null }));
+    mocks.createAdminClient.mockReturnValue({ from: () => dateQuery([]), rpc });
+    await GET(new Request('http://localhost/api/reservations/availability?from=2026-12-01&to=2027-04-01'));
+    expect(rpc).toHaveBeenCalledWith('get_reservation_capacity_availability', { p_from: '2026-12-31', p_to: '2027-03-01' });
   });
 
   it('keeps successive 30-minute arrivals available while there are places for active guests', async () => {

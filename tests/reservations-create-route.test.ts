@@ -26,6 +26,7 @@ function setup(options: {
   rpcResult?: unknown;
   insertResult?: unknown;
   requestedTurn?: string | null;
+  specialDates?: Array<{ id: string; date: string; included_guests: number | null; requires_fee: boolean; fee_amount: number | null }>;
   matchingReservations?: Array<{ commercial_turn: string | null; reservation_time: string; num_guests: number; status: string }>;
 } = {}) {
   const insert = vi.fn((_payload: unknown) => ({ select: vi.fn(() => ({ single: vi.fn(async () => options.insertResult || ({ data: { id: 'reservation-id' }, error: null })) })) }));
@@ -39,14 +40,14 @@ function setup(options: {
   reservationQuery.eq.mockReturnValue(reservationQuery);
   const adminFrom = vi.fn((table: string) => {
     if (table === 'blocked_dates') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
-    if (table === 'special_dates') return { select: () => ({ eq: async () => ({ data: [], error: null }) }) };
+    if (table === 'special_dates') return { select: () => ({ eq: async () => ({ data: options.specialDates || [], error: null }) }) };
     if (table === 'reservations') return { insert, select: () => reservationQuery };
     throw new Error(`Unexpected table ${table}`);
   });
   const sessionRpc = vi.fn(async () => options.rpcResult || ({ data: [{ id: 'authorized-id' }], error: null }));
   mocks.createAdminClient.mockReturnValue({ from: adminFrom, rpc: adminRpc });
   mocks.createClient.mockResolvedValue({ rpc: sessionRpc });
-  return { insert, adminRpc, adminFrom, sessionRpc };
+  return { insert, adminRpc, adminFrom, sessionRpc, reservationQuery };
 }
 
 function request(body: Record<string, unknown>) {
@@ -79,22 +80,76 @@ describe('POST /api/reservations capacity controls', () => {
     expect(payload).not.toHaveProperty('capacity_override_authorized_by');
   });
 
-  it('requires a valid CPF for every reservation and accepts an omitted email', async () => {
+  it('accepts 14 guests without CPF or email and does not search an empty CPF', async () => {
     mocks.isPanelStaff.mockResolvedValue(false);
-    const { insert } = setup();
-    const response = await POST(request({ ...standardBody, email: undefined }));
+    const { insert, reservationQuery } = setup();
+    const response = await POST(request({ ...standardBody, guests: 14, cpf: undefined, email: undefined }));
 
     expect(response.status).toBe(201);
-    expect(insert.mock.calls[0]?.[0]).toMatchObject({ cpf: '52998224725', email: null });
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ cpf: null, email: null, payment_status: 'not_required', payment_amount: 0 });
+    expect(reservationQuery.eq).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ paymentRequired: false, paymentAmount: 0 });
   });
 
-  it('rejects a reservation without a valid CPF before inserting it', async () => {
+  it('rejects 15 guests without CPF even when the client claims no payment is needed', async () => {
     mocks.isPanelStaff.mockResolvedValue(false);
     const { insert } = setup();
-    const response = await POST(request({ ...standardBody, cpf: '' }));
+    const response = await POST(request({ ...standardBody, guests: 15, cpf: '', paymentRequired: false, paymentAmount: 0 }));
 
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'PAYMENT_CPF_REQUIRED' });
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid CPF when one is supplied', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup();
+    const response = await POST(request({ ...standardBody, cpf: '00000000000' }));
+    expect(response.status).toBe(400);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it.each([15, 30])('requires payment for %i guests with a valid CPF', async (guests) => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup();
+    const response = await POST(request({ ...standardBody, guests, email: undefined }));
+    expect(response.status).toBe(201);
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ payment_status: 'pending', payment_amount: 100, num_guests: guests });
+    expect(await response.json()).toMatchObject({ paymentRequired: true, paymentAmount: 100 });
+  });
+
+  it('requires CPF for a paid special date even for two guests', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup({ specialDates: [{ id: 'synthetic-event', date: standardBody.date, included_guests: 2, requires_fee: true, fee_amount: 75 }] });
+    const response = await POST(request({ ...standardBody, cpf: undefined, specialDateId: 'synthetic-event' }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'PAYMENT_CPF_REQUIRED' });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('uses the special-date price without adding the group fee', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup({ specialDates: [{ id: 'synthetic-event', date: standardBody.date, included_guests: 20, requires_fee: true, fee_amount: 75 }] });
+    const response = await POST(request({ ...standardBody, specialDateId: 'synthetic-event', guests: 2, paymentAmount: 1 }));
+    expect(response.status).toBe(201);
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ num_guests: 20, payment_status: 'pending', payment_amount: 75 });
+    expect(await response.json()).toMatchObject({ paymentRequired: true, paymentAmount: 75 });
+  });
+
+  it('requires CPF based on the effective number of guests in the event', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup({ specialDates: [{ id: 'synthetic-event', date: standardBody.date, included_guests: 15, requires_fee: false, fee_amount: null }] });
+    const response = await POST(request({ ...standardBody, cpf: undefined, specialDateId: 'synthetic-event' }));
+    expect(response.status).toBe(400);
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('allows a free special date below 15 guests without CPF', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup({ specialDates: [{ id: 'synthetic-event', date: standardBody.date, included_guests: 4, requires_fee: false, fee_amount: null }] });
+    const response = await POST(request({ ...standardBody, cpf: undefined, specialDateId: 'synthetic-event' }));
+    expect(response.status).toBe(201);
+    expect(insert.mock.calls[0]?.[0]).toMatchObject({ cpf: null, num_guests: 4, payment_status: 'not_required' });
   });
 
   it('returns a WhatsApp-choice conflict for an active reservation with the same CPF and turn', async () => {
@@ -137,13 +192,44 @@ describe('POST /api/reservations capacity controls', () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it('keeps the public create horizon at today plus ten days', async () => {
+  it.each(['2026-09-09', '2026-11-08'])('accepts the public horizon boundary %s', async (date) => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup();
+    const response = await POST(request({ ...standardBody, date }));
+    expect(response.status).toBe(201);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ reservation_date: date }));
+  });
+
+  it.each(['2026-09-08', '2026-11-09'])('rejects a public reservation outside today through day +60: %s', async (date) => {
     mocks.isPanelStaff.mockResolvedValue(false);
     const { insert, adminRpc } = setup();
-    const response = await POST(request({ ...standardBody, date: '2026-09-20' }));
+    const response = await POST(request({ ...standardBody, date }));
     expect(response.status).toBe(400);
     expect(insert).not.toHaveBeenCalled();
     expect(adminRpc).not.toHaveBeenCalled();
+  });
+
+  it('preserves the extended creation horizon for panel staff', async () => {
+    mocks.isPanelStaff.mockResolvedValue(true);
+    const { insert } = setup();
+    expect((await POST(request({ ...standardBody, date: '2026-11-09' }))).status).toBe(201);
+    expect(insert).toHaveBeenCalledOnce();
+  });
+
+  it('reports the two-hour minimum when the database rejects the lead time', async () => {
+    mocks.isPanelStaff.mockResolvedValue(false);
+    setup({ insertResult: { data: null, error: { message: 'RESERVATION_LEAD_TIME_NOT_MET' } } });
+    const response = await POST(request(standardBody));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'A reserva precisa ser feita com pelo menos 2 horas de antecedência.' });
+  });
+
+  it.each([['2027-03-01', 201], ['2027-03-02', 400]] as const)('uses Porto Velho today and the year-crossing horizon: %s', async (date, status) => {
+    vi.setSystemTime(new Date('2027-01-01T02:00:00Z'));
+    mocks.isPanelStaff.mockResolvedValue(false);
+    const { insert } = setup();
+    expect((await POST(request({ ...standardBody, date }))).status).toBe(status);
+    expect(insert).toHaveBeenCalledTimes(status === 201 ? 1 : 0);
   });
 
   it('revalidates delegated capacity permission in the database', async () => {
